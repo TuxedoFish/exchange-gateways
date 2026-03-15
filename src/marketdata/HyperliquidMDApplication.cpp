@@ -1,4 +1,5 @@
 #include "../../include/marketdata/HyperliquidMDApplication.h"
+#include <spdlog/spdlog.h>
 
 HyperliquidMDApplication::HyperliquidMDApplication(const SimpleConfig& config)
     : HyperliquidMDApplicationBase(config), m_processor(m_writer)
@@ -14,10 +15,10 @@ void HyperliquidMDApplication::onConnected() {
 void HyperliquidMDApplication::onDisconnected(bool hasError, const std::string& errMsg) {
     if (hasError)
     {
-        std::cout << "Disconnected: " << errMsg << std::endl;
+        spdlog::info("Disconnected: {}", errMsg);
     } else
     {
-        std::cout << "Disconnected." << std::endl;
+        spdlog::info("Disconnected.");
     }
     m_processor.onDisconnected(hasError, errMsg);
     HyperliquidMDApplicationBase::onDisconnected(hasError, errMsg);

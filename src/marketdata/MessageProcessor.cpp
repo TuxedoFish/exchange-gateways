@@ -1,4 +1,5 @@
 #include "../../include/marketdata/MessageProcessor.h"
+#include <spdlog/spdlog.h>
 
 MessageProcessor::MessageProcessor(SBEBinaryWriter& writer)
     : m_writer(writer)
@@ -73,7 +74,7 @@ bool MessageProcessor::updateConnectionStatus(com::liversedge::messages::Connect
     }
     if (!m_writer.prepareMessage(m_connectionStatus))
     {
-        std::cerr << "Error preparing connection status update" << std::endl;
+        spdlog::error("Error preparing connection status update");
         return false;
     }
 
@@ -82,7 +83,7 @@ bool MessageProcessor::updateConnectionStatus(com::liversedge::messages::Connect
 
     if (!m_writer.writeMessage(m_connectionStatus))
     {
-        std::cerr << "Error writing connection status update" << std::endl;
+        spdlog::error("Error writing connection status update");
         return false;
     }
 
@@ -95,7 +96,7 @@ bool MessageProcessor::removeSecurity(int securityId)
     {
         if (!m_writer.prepareMessage(m_securityDefinition))
         {
-            std::cerr << "Error preparing security removal message" << std::endl;
+            spdlog::error("Error preparing security removal message");
             return false;
         }
 
@@ -104,7 +105,7 @@ bool MessageProcessor::removeSecurity(int securityId)
 
         if (!m_writer.writeMessage(m_securityDefinition))
         {
-            std::cerr << "Error writing security removal message" << std::endl;
+            spdlog::error("Error writing security removal message");
             return false;
         }
     }
@@ -125,7 +126,7 @@ bool MessageProcessor::updateSecurityStatus(int securityId, const std::uint64_t 
     auto it = m_securities.find(securityId);
     if (it == m_securities.end())
     {
-        std::cerr << "Error security " << securityId << " not found" << std::endl;
+        spdlog::error("Error security {} not found", securityId);
         return false;
     }
     if (it->second.status == newStatus)
@@ -141,7 +142,7 @@ bool MessageProcessor::updateSecurityStatus(int securityId, const std::uint64_t 
     }
     if (!m_writer.prepareMessage(m_securityStatus))
     {
-        std::cerr << "Error preparing security status update" << std::endl;
+        spdlog::error("Error preparing security status update");
         return false;
     }
 
@@ -151,7 +152,7 @@ bool MessageProcessor::updateSecurityStatus(int securityId, const std::uint64_t 
 
     if (!m_writer.writeMessage(m_securityStatus))
     {
-        std::cerr << "Error writing security status update" << std::endl;
+        spdlog::error("Error writing security status update");
         return false;
     }
 
@@ -160,6 +161,6 @@ bool MessageProcessor::updateSecurityStatus(int securityId, const std::uint64_t 
 
 void MessageProcessor::setShouldOutput(bool shouldOutput)
 {
-    std::cout << "MessageProcessor: Setting shouldOutput to " << shouldOutput << std::endl;
+    spdlog::info("MessageProcessor: Setting shouldOutput to {}", shouldOutput);
     m_shouldOutput = shouldOutput;
 }

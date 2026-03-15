@@ -18,7 +18,7 @@ int FIXRunner::run(FIX::Application& application, const std::string& startupMess
         // Load configuration
         FIX::SessionSettings settings(config_.getString("fix_settings_file_path"));
 
-        std::cout << startupMessage << std::endl;
+        spdlog::info("{}", startupMessage);
 
         // Create stores and logs
         FIX::FileStoreFactory storeFactory(settings);
@@ -37,7 +37,7 @@ int FIXRunner::run(FIX::Application& application, const std::string& startupMess
     }
     catch (std::exception& e)
     {
-        std::cout << "Error: " << e.what() << std::endl;
+        spdlog::error("Error: {}", e.what());
         return 1;
     }
 
@@ -48,7 +48,7 @@ void FIXRunner::runWithInitiator(std::function<void()> mainLoop, FIX::ThreadedSS
 {
     // Start the connection
     initiator.start();
-    std::cout << "FIX client started. Type q to quit..." << std::endl;
+    spdlog::info("FIX client started. Type q to quit...");
 
     // Run the main loop
     mainLoop();

@@ -1,9 +1,9 @@
 #include "../../include/marketdata/HyperliquidMessageProcessor.h"
 #include "../../include/sbe/SBEUtils.h"
+#include <spdlog/spdlog.h>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
-#include <iostream>
 
 namespace
 {
@@ -37,7 +37,7 @@ void HyperliquidMessageProcessor::onConnected()
 {
     if (getConnectionStatus() == com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
     {
-        std::cerr << "Received connect while still online, invalidating the state" << std::endl;
+        spdlog::error("Received connect while still online, invalidating the state");
         invalidateState(0);
     }
 
@@ -71,7 +71,7 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
         {
             if (!m_writer.prepareMessage(m_securityDefinition))
             {
-                std::cerr << "Error preparing security definition for " << asset.name << std::endl;
+                spdlog::error("Error preparing security definition for {}", asset.name);
                 removeSecurity(id);
                 continue;
             }
@@ -105,7 +105,7 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
 
             if (!m_writer.writeMessage(m_securityDefinition))
             {
-                std::cerr << "Error writing security definition for " << asset.name << std::endl;
+                spdlog::error("Error writing security definition for {}", asset.name);
                 removeSecurity(id);
                 continue;
             }
@@ -113,7 +113,7 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
 
         if (!updateSecurityStatus(id, 0, com::liversedge::messages::SecurityStatusEnum::Value::PENDING_SNAPSHOT))
         {
-            std::cerr << "Error updating security status to PENDING_SNAPSHOT for " << asset.name << std::endl;
+            spdlog::error("Error updating security status to PENDING_SNAPSHOT for {}", asset.name);
         }
     }
 
@@ -125,13 +125,13 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
     );
 
     if (!missing.empty()) {
-        std::cout << "Waiting for coins: ";
+        std::string missingCoins;
         for (const auto& coin : missing) {
-            std::cout << coin << " ";
+            missingCoins += coin + " ";
         }
-        std::cout << std::endl;
+        spdlog::info("Waiting for coins: {}", missingCoins);
     } else {
-        std::cout << "All desired coins available." << std::endl;
+        spdlog::info("All desired coins available.");
         updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, 0);
     }
 }
@@ -162,7 +162,7 @@ void HyperliquidMessageProcessor::onL2BookLevel(const hyperliquid::L2BookUpdate&
 
     if (!m_writer.prepareMessage(m_mdUpdate))
     {
-        std::cerr << "Error preparing MDUpdate message" << std::endl;
+        spdlog::error("Error preparing MDUpdate message");
         return;
     }
 
@@ -176,7 +176,7 @@ void HyperliquidMessageProcessor::onL2BookLevel(const hyperliquid::L2BookUpdate&
 
     if (!m_writer.writeMessage(m_mdUpdate))
     {
-        std::cerr << "Error writing MDUpdate message" << std::endl;
+        spdlog::error("Error writing MDUpdate message");
     }
 }
 
@@ -200,7 +200,7 @@ void HyperliquidMessageProcessor::onTrade(const hyperliquid::Trade& trade)
 
     if (!m_writer.prepareMessage(m_mdUpdate))
     {
-        std::cerr << "Error preparing MDUpdate message" << std::endl;
+        spdlog::error("Error preparing MDUpdate message");
         return;
     }
 
@@ -215,6 +215,6 @@ void HyperliquidMessageProcessor::onTrade(const hyperliquid::Trade& trade)
 
     if (!m_writer.writeMessage(m_mdUpdate))
     {
-        std::cerr << "Error writing MDUpdate message" << std::endl;
+        spdlog::error("Error writing MDUpdate message");
     }
 }

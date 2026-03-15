@@ -1,23 +1,21 @@
 #pragma once
 
 #include <memory>
+#include <iostream>
+#include <unordered_map>
 #include "../sbe/SBEMessageListener.h"
 #include "../sbe/SBEBinaryWriter.h"
+#include "../sbe/SBEUtils.h"
 #include "RefDataHolder.h"
-#include "quickfix/fix44/NewOrderSingle.h"
-#include "quickfix/fix44/OrderCancelRequest.h"
-#include "quickfix/fix44/OrderCancelReplaceRequest.h"
-#include "quickfix/Fields.h"
-#include "../../include/gateway/DeribitGWApplication.h"
-#include "../../include/gateway/DeribitMessageConverter.h"
-#include "../../include/sbe/SBEUtils.h"
-#include "../../include/fix/FIXCustomTags.h"
-#include <iostream>
+#include "HyperliquidGWApplication.h"
+#include "DeribitMessageConverter.h"
+
+class HyperliquidGWApplication;
 
 class HyperliquidOrdersHandler: public SBEMessageListener
 {
 public:
-    explicit HyperliquidOrdersHandler(RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter);
+    explicit HyperliquidOrdersHandler(RefDataHolder& refDataHolder, HyperliquidGWApplication& gwApplication, SBEBinaryWriter& sbeWriter);
     ~HyperliquidOrdersHandler() = default;
 
     // SBEMessageListener implementation
@@ -36,11 +34,26 @@ public:
     RefDataHolder& getRefDataHolder() { return m_refDataHolder; }
     void setIsReplay (const bool isReplay) { m_isReplay = isReplay; }
 
+    // Cloid mapping methods (called by HyperliquidGWApplication)
+    std::string lookupClientOrderId(const std::string& cloid) const;
+    std::string lookupClientOrderIdByOid(uint64_t oid) const;
+    void registerOid(uint64_t oid, const std::string& cloid);
+    void removeOrder(const std::string& cloid);
+
 private:
     bool m_isReplay = false;
     RefDataHolder& m_refDataHolder;
+    HyperliquidGWApplication& m_gwApplication;
     SBEBinaryWriter& m_sbeWriter;
 
     void sendCancelReject(com::liversedge::messages::CancelOrder& cancelOrder);
     void sendNewOrderReject(com::liversedge::messages::NewOrder& newOrder);
+
+    static hyperliquid::Tif mapTimeInForce(com::liversedge::messages::TimeInForce::Value tif);
+
+    // Bidirectional mapping: internal clientOrderId <-> Hyperliquid cloid
+    std::unordered_map<std::string, std::string> m_clientToCloid;
+    std::unordered_map<std::string, std::string> m_cloidToClient;
+    // Exchange oid -> Hyperliquid cloid (for fill correlation)
+    std::unordered_map<uint64_t, std::string> m_oidToCloid;
 };

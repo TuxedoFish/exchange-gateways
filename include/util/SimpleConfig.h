@@ -5,7 +5,7 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <sstream>
 #include <stdexcept>
 
@@ -40,9 +40,9 @@ public:
 
     // Print all configuration values (for debugging)
     void printAll() const {
-        std::cout << "Configuration from: " << config_file_path_ << std::endl;
+        spdlog::info("Configuration from: {}", config_file_path_);
         for (const auto& pair : config_values_) {
-            std::cout << pair.first << " = " << pair.second << std::endl;
+            spdlog::info("{} = {}", pair.first, pair.second);
         }
     }
 

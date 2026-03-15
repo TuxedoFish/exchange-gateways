@@ -9,7 +9,7 @@ if (POLICY CMP0141)
     set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif ()
 
-project("deribit-trading-engine")
+project("exchange-gateways")
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -73,6 +73,8 @@ set(GATEWAY_SOURCES
         src/gateway/DeribitOrdersHandler.cpp
         include/gateway/HyperliquidOrdersHandler.h
         src/gateway/HyperliquidOrdersHandler.cpp
+        include/gateway/HyperliquidGWApplication.h
+        src/gateway/HyperliquidGWApplication.cpp
         include/gateway/DeribitMessageConverter.h
         src/gateway/DeribitMessageConverter.cpp
 )
@@ -130,6 +132,7 @@ add_executable(gateways
 # Dependencies
 find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS iostreams filesystem system)
+find_package(spdlog CONFIG REQUIRED)
 IF (Boost_FOUND)
     INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
     ADD_DEFINITIONS( "-DHAS_BOOST" )
@@ -151,6 +154,7 @@ target_link_libraries(gateways
         quickfix hyperliquid-sdk
         ${OPENSSL_LIBRARIES}
         Boost::iostreams Boost::filesystem Boost::system
+        spdlog::spdlog
 )
 
 # Generated code

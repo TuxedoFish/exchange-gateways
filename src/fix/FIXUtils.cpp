@@ -19,7 +19,7 @@ void FixUtils::logFixMessage(const std::string& prefix, const FIX::Message& mess
 {
     std::string fixString = message.toString();
     std::replace(fixString.begin(), fixString.end(), '\001', '|');
-    std::cout << prefix << ": " << fixString << std::endl;
+    spdlog::info("{}: {}", prefix, fixString);
 }
 
 void FixUtils::addDeribitAuth(FIX::Message& message, const SimpleConfig& config)
@@ -42,7 +42,7 @@ void FixUtils::addDeribitAuth(FIX::Message& message, const SimpleConfig& config)
     raw_data_stream << timestamp_in_ms << "." << nonce64;
     std::string raw_data = raw_data_stream.str();
     std::string raw_and_secret = raw_data + secret;
-    std::cout << "Logging on with timestamp=" << timestamp_in_ms << " nonce64=" << nonce64 << " raw_data=" << raw_data << "raw_and_secret=" << raw_and_secret << std::endl;
+    spdlog::info("Logging on with timestamp={} nonce64={} raw_data={}raw_and_secret={}", timestamp_in_ms, nonce64, raw_data, raw_and_secret);
 
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256_CTX sha256;
@@ -54,5 +54,5 @@ void FixUtils::addDeribitAuth(FIX::Message& message, const SimpleConfig& config)
     message.setField(FIX::Username(user));
     message.setField(FIX::RawData(raw_data));
     message.setField(FIX::Password(password_sha_base64));
-    std::cout << "Sending logon with credentials" << std::endl;
+    spdlog::info("Sending logon with credentials");
 }

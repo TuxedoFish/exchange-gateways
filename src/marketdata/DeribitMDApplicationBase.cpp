@@ -1,23 +1,24 @@
 #include "../../include/marketdata/DeribitMDApplicationBase.h"
+#include <spdlog/spdlog.h>
 
 #include "../../include/fix/FIXCustomTags.h"
 
 void DeribitApplicationBase::onCreate(const FIX::SessionID& sessionID)
 {
-    std::cout << "Session created: " << sessionID << std::endl;
+    spdlog::info("Session created: {}", sessionID.toString());
     m_sessionID = sessionID;
 }
 
 void DeribitApplicationBase::onLogon(const FIX::SessionID& sessionID)
 {
-    std::cout << "Logged on to Deribit: " << sessionID << std::endl;
+    spdlog::info("Logged on to Deribit: {}", sessionID.toString());
     m_loggedOn = true;
     getSymbols();
 }
 
 void DeribitApplicationBase::onLogout(const FIX::SessionID& sessionID)
 {
-    std::cout << "Logged out from Deribit: " << sessionID << std::endl;
+    spdlog::info("Logged out from Deribit: {}", sessionID.toString());
     m_loggedOn = false;
 }
 
@@ -65,7 +66,7 @@ void DeribitApplicationBase::getSymbols()
         FIX::Session::sendToTarget(secListRequest, m_sessionID);
     }
     catch (const std::exception& e) {
-        std::cout << "Error sending SecurityListRequest: " << e.what() << std::endl;
+        spdlog::error("Error sending SecurityListRequest: {}", e.what());
     }
 
     secListRequest.setField(FIX::SecurityReqID("SYMBOLS_002"));
@@ -75,7 +76,7 @@ void DeribitApplicationBase::getSymbols()
         FIX::Session::sendToTarget(secListRequest, m_sessionID);
     }
     catch (const std::exception& e) {
-        std::cout << "Error sending SecurityListRequest: " << e.what() << std::endl;
+        spdlog::error("Error sending SecurityListRequest: {}", e.what());
     }
 }
 
@@ -131,7 +132,7 @@ void DeribitApplicationBase::onMessage(const FIX44::MarketDataRequestReject& mes
 void DeribitApplicationBase::onMessage(const FIX44::MarketDataSnapshotFullRefresh& message, const FIX::SessionID& sessionID) {
     FIX::Symbol symbol;
     message.get(symbol);
-    std::cout << "Received MarketDataSnapshotFullRefresh for: " << symbol.getValue() << std::endl;
+    spdlog::info("Received MarketDataSnapshotFullRefresh for: {}", symbol.getValue());
 }
 
 void DeribitApplicationBase::onMessage(const FIX44::MarketDataIncrementalRefresh& message, const FIX::SessionID& sessionID) {
@@ -154,11 +155,11 @@ void DeribitApplicationBase::onMessage(const FIX44::SecurityList& message, const
         symbols[i-1] = symbol.getString();
     }
 
-    std::cout << "Symbols: ";
+    std::string symbolsList;
     for (int i = 0; i < noSecurities; i++) {
-        std::cout << symbols[i] << ", ";
+        symbolsList += symbols[i] + ", ";
     }
-    std::cout << std::endl;
+    spdlog::info("Symbols: {}", symbolsList);
     subscribe(symbols, noSecurities);
 }
 

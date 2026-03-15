@@ -1,4 +1,5 @@
 #include "../../include/gateway/DeribitOrdersHandler.h"
+#include <spdlog/spdlog.h>
 
 DeribitOrdersHandler::DeribitOrdersHandler(RefDataHolder& refDataHolder, DeribitGWApplication& gwApplication, SBEBinaryWriter& sbeWriter)
     : m_refDataHolder(refDataHolder), m_gwApplication(gwApplication), m_sbeWriter(sbeWriter)
@@ -28,7 +29,7 @@ void DeribitOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& decod
 
         const SecurityInfo* secInfo = m_refDataHolder.getSecurityInfo(securityId);
         if (!secInfo) {
-            std::cout << "OrdersHandler: Security not found for ID: " << securityId << std::endl;
+            spdlog::error("OrdersHandler: Security not found for ID: {}", securityId);
             return;
         }
 
@@ -51,15 +52,14 @@ void DeribitOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& decod
         newOrderSingle.setField(SBEUtils::convertTimeInForce(timeInForce));
 
         if (m_gwApplication.sendMessage(newOrderSingle)) {
-            std::cout << "OrdersHandler: Sent NewOrderSingle for " << clientOrderId
-                      << " (" << secInfo->getSymbol() << ")" << std::endl;
+            spdlog::info("OrdersHandler: Sent NewOrderSingle for {} ({})", clientOrderId, secInfo->getSymbol());
         } else {
-            std::cout << "OrdersHandler: Failed to send NewOrderSingle for " << clientOrderId << std::endl;
+            spdlog::error("OrdersHandler: Failed to send NewOrderSingle for {}", clientOrderId);
             sendNewOrderReject(decoder);
         }
 
     } catch (const std::exception& e) {
-        std::cout << "OrdersHandler: Error processing NewOrder: " << e.what() << std::endl;
+        spdlog::error("OrdersHandler: Error processing NewOrder: {}", e.what());
         sendNewOrderReject(decoder);
     }
 }
@@ -82,7 +82,7 @@ void DeribitOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrder& d
 
         const SecurityInfo* secInfo = m_refDataHolder.getSecurityInfo(securityId);
         if (!secInfo) {
-            std::cout << "OrdersHandler: Security not found for ID: " << securityId << std::endl;
+            spdlog::error("OrdersHandler: Security not found for ID: {}", securityId);
             return;
         }
 
@@ -105,16 +105,15 @@ void DeribitOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrder& d
         orderCancelReplaceRequest.setField(SBEUtils::convertTimeInForce(timeInForce));
 
         if (m_gwApplication.sendMessage(orderCancelReplaceRequest)) {
-            std::cout << "OrdersHandler: Sent OrderCancelReplaceRequest for " << clientOrderId
-                      << " (" << secInfo->getSymbol() << ")" << std::endl;
+            spdlog::info("OrdersHandler: Sent OrderCancelReplaceRequest for {} ({})", clientOrderId, secInfo->getSymbol());
         } else {
-            std::cout << "OrdersHandler: Failed to send NewOrderSingle for " << clientOrderId << std::endl;
+            spdlog::error("OrdersHandler: Failed to send NewOrderSingle for {}", clientOrderId);
             // TODO Handle internal reject
             // sendCancelReject(decoder);
         }
 
     } catch (const std::exception& e) {
-        std::cout << "OrdersHandler: Error processing AmendOrder: " << e.what() << std::endl;
+        spdlog::error("OrdersHandler: Error processing AmendOrder: {}", e.what());
         // TODO Handle internal reject
         // sendCancelReject(decoder);
     }
@@ -134,7 +133,7 @@ void DeribitOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOrder&
 
         const SecurityInfo* secInfo = m_refDataHolder.getSecurityInfo(securityId);
         if (!secInfo) {
-            std::cout << "OrdersHandler: Security not found for ID: " << securityId << std::endl;
+            spdlog::error("OrdersHandler: Security not found for ID: {}", securityId);
             return;
         }
 
@@ -144,15 +143,14 @@ void DeribitOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOrder&
         cancelRequest.setField(FIX::Symbol(secInfo->getSymbol()));
 
         if (m_gwApplication.sendMessage(cancelRequest)) {
-            std::cout << "OrdersHandler: Sent OrderCancelRequest for " << origClientOrderId
-                      << " (" << secInfo->getSymbol() << ")" << std::endl;
+            spdlog::info("OrdersHandler: Sent OrderCancelRequest for {} ({})", origClientOrderId, secInfo->getSymbol());
         } else {
-            std::cout << "OrdersHandler: Failed to send OrderCancelRequest for " << origClientOrderId << std::endl;
+            spdlog::error("OrdersHandler: Failed to send OrderCancelRequest for {}", origClientOrderId);
             sendCancelReject(decoder);
         }
 
     } catch (const std::exception& e) {
-        std::cout << "OrdersHandler: Error processing CancelOrder: " << e.what() << std::endl;
+        spdlog::error("OrdersHandler: Error processing CancelOrder: {}", e.what());
         sendCancelReject(decoder);
     }
 }

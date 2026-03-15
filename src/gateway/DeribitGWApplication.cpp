@@ -1,4 +1,5 @@
 #include "../../include/gateway/DeribitGWApplication.h"
+#include <spdlog/spdlog.h>
 
 DeribitGWApplication::DeribitGWApplication(SimpleConfig& config, RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter)
     : m_config(config), m_refDataHolder(refDataHolder), m_sbeWriter(sbeWriter)
@@ -7,19 +8,19 @@ DeribitGWApplication::DeribitGWApplication(SimpleConfig& config, RefDataHolder& 
 
 void DeribitGWApplication::onCreate(const FIX::SessionID& sessionID)
 {
-    std::cout << "Session created: " << sessionID << std::endl;
+    spdlog::info("Session created: {}", sessionID.toString());
     m_sessionID = sessionID;
 }
 
 void DeribitGWApplication::onLogon(const FIX::SessionID& sessionID)
 {
-    std::cout << "Logged on to Deribit: " << sessionID << std::endl;
+    spdlog::info("Logged on to Deribit: {}", sessionID.toString());
     m_loggedOn = true;
 }
 
 void DeribitGWApplication::onLogout(const FIX::SessionID& sessionID)
 {
-    std::cout << "Logged out from Deribit: " << sessionID << std::endl;
+    spdlog::info("Logged out from Deribit: {}", sessionID.toString());
     m_loggedOn = false;
 }
 
@@ -59,7 +60,7 @@ void DeribitGWApplication::onMessage(const FIX44::OrderCancelReject& message, co
     if (m_sbeWriter.prepareMessage(sbeReject)) {
         DeribitMessageConverter::convertOrderCancelReject(message, sbeReject, m_refDataHolder);
         m_sbeWriter.writeMessage(sbeReject);
-        std::cout << "Sent SBE: " << sbeReject << std::endl;
+        spdlog::info("Sent SBE OrderCancelReject");
     }
 }
 
@@ -72,14 +73,14 @@ void DeribitGWApplication::onMessage(const FIX44::ExecutionReport& message, cons
     {
         DeribitMessageConverter::convertExecutionReport(message, sbeExecReport, m_refDataHolder);
         m_sbeWriter.writeMessage(sbeExecReport);
-        std::cout << "Sent SBE: " << sbeExecReport << std::endl;
+        spdlog::info("Sent SBE ExecutionReport");
     }
 }
 
 bool DeribitGWApplication::sendMessage(FIX::Message& message)
 {
     if (!m_loggedOn) {
-        std::cout << "Cannot send message: not logged on" << std::endl;
+        spdlog::error("Cannot send message: not logged on");
         return false;
     }
 
@@ -87,7 +88,7 @@ bool DeribitGWApplication::sendMessage(FIX::Message& message)
         FIX::Session::sendToTarget(message, m_sessionID);
         return true;
     } catch (const std::exception& e) {
-        std::cout << "Failed to send message: " << e.what() << std::endl;
+        spdlog::error("Failed to send message: {}", e.what());
         return false;
     }
 }

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <iostream>
 #include <string>
+#include <spdlog/spdlog.h>
 #include <functional>
 #include "quickfix/Application.h"
 #include "quickfix/FileStore.h"

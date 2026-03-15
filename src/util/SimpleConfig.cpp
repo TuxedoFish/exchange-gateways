@@ -68,7 +68,7 @@ bool SimpleConfig::hasKey(const std::string& key) const {
 void SimpleConfig::loadFromFile() {
     std::ifstream file(config_file_path_);
     if (!file.is_open()) {
-        std::cerr << "Cannot open configuration file: " + config_file_path_ << std::endl;
+        spdlog::error("Cannot open configuration file: {}", config_file_path_);
         throw std::runtime_error("Cannot open configuration file: " + config_file_path_);
     }
 
@@ -76,7 +76,7 @@ void SimpleConfig::loadFromFile() {
     int line_number = 0;
 
     while (std::getline(file, line)) {
-        std::cout << line << std::endl;
+        spdlog::info("{}", line);
         line_number++;
 
         // Skip empty lines and comments
@@ -87,8 +87,7 @@ void SimpleConfig::loadFromFile() {
         // Find the equals sign
         size_t equals_pos = line.find('=');
         if (equals_pos == std::string::npos) {
-            std::cerr << "Warning: Invalid line " << line_number
-                << " in config file: " << line << std::endl;
+            spdlog::error("Warning: Invalid line {} in config file: {}", line_number, line);
             continue;
         }
 
@@ -103,7 +102,7 @@ void SimpleConfig::loadFromFile() {
 
         config_values_[key] = value;
     }
-    std::cout << "Loaded configuration from: " << config_file_path_ << std::endl;
+    spdlog::info("Loaded configuration from: {}", config_file_path_);
 }
 
 // Utility function to trim whitespace

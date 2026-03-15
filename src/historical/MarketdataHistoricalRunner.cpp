@@ -1,4 +1,5 @@
 #include "../../include/historical/MarketdataHistoricalRunner.h"
+#include <spdlog/spdlog.h>
 
 MarketdataHistoricalRunner::MarketdataHistoricalRunner(SimpleConfig& config) : config_{ config } {
 }
@@ -64,16 +65,14 @@ std::string MarketdataHistoricalRunner::getStringSafe(const char* data, size_t s
     }
 
     if (hasNullBytes) {
-        std::cerr << "WARNING: Null bytes detected in message. Original length: "
-                  << msgStr.size() << ", cleaned length: " << cleanedMsgStr.size()
-                  << " - DISCARDING MESSAGE due to corruption" << std::endl;
-        std::cerr << "Corrupted message preview: ";
+        spdlog::error("WARNING: Null bytes detected in message. Original length: {}, cleaned length: {} - DISCARDING MESSAGE due to corruption", msgStr.size(), cleanedMsgStr.size());
+        std::string preview;
         for (char c : cleanedMsgStr) {
-            if (c == '\x01') std::cerr << "[SOH]";
-            else if (std::isprint(c)) std::cerr << c;
-            else std::cerr << "[" << static_cast<int>(c) << "]";
+            if (c == '\x01') preview += "[SOH]";
+            else if (std::isprint(c)) preview += c;
+            else preview += "[" + std::to_string(static_cast<int>(c)) + "]";
         }
-        std::cerr << std::endl;
+        spdlog::error("Corrupted message preview: {}", preview);
         return "";
     }
 
@@ -98,10 +97,8 @@ void MarketdataHistoricalRunner::logProgress(size_t processedLines, size_t total
             int remainingMinutes = (static_cast<int>(remainingSeconds) % 3600) / 60;
             int remainingSecs = static_cast<int>(remainingSeconds) % 60;
 
-            std::cout << "Progress: " << std::fixed << std::setprecision(2) << progressPercent
-                      << "% (" << processedLines << "/" << totalLines << " lines) - "
-                      << "Estimated time remaining: " << remainingHours << "h "
-                      << remainingMinutes << "m " << remainingSecs << "s" << std::endl;
+            spdlog::info("Progress: {:.2f}% ({}/{} lines) - Estimated time remaining: {}h {}m {}s",
+                         progressPercent, processedLines, totalLines, remainingHours, remainingMinutes, remainingSecs);
         }
 
         lastProgressTime = currentTime;
@@ -117,10 +114,10 @@ int MarketdataHistoricalRunner::run() {
     const std::string endDateStr = config_.getString("end_date", "");
 
     if (startDateStr == "" || endDateStr == "") {
-        std::cout << "Required start_date and end_date missing." << std::endl;
+        spdlog::info("Required start_date and end_date missing.");
     }
 
-    std::cout << "Processing from " << startDateStr << " until " << endDateStr << std::endl;
+    spdlog::info("Processing from {} until {}", startDateStr, endDateStr);
     tm startDate = DateUtils::getDateFromString(startDateStr);
     tm endDate = DateUtils::getDateFromString(endDateStr);
     tm currentDate = startDate;
@@ -136,7 +133,7 @@ int MarketdataHistoricalRunner::run() {
         previousDate.tm_mday -= 1;
         std::string previousFilePath = findValidFilePath(rawFixCapturesLoc, previousDate);
         if (!previousFilePath.empty() && boost::filesystem::exists(previousFilePath)) {
-            std::cout << "Found previous day file: " << previousFilePath << ", priming state..." << std::endl;
+            spdlog::info("Found previous day file: {}, priming state...", previousFilePath);
 
             // Disable output while priming state
             processor.setShouldOutput(false);
@@ -176,13 +173,13 @@ int MarketdataHistoricalRunner::run() {
             if (foundLogon) {
                 readFrom(replayFrom, end, historicalProcessor, linesToReplay);
             } else {
-                std::cerr << "No logon message found in previous day file" << std::endl;
+                spdlog::error("No logon message found in previous day file");
                 return 0;
             }
 
             previousFile.close();
         } else {
-            std::cerr << "No previous day file found (" << previousFilePath << "), exiting early" << std::endl;
+            spdlog::error("No previous day file found ({}), exiting early", previousFilePath);
             return 0;
         }
     }
@@ -195,7 +192,7 @@ int MarketdataHistoricalRunner::run() {
         std::string filePath = findValidFilePath(rawFixCapturesLoc, currentDate);
 
         if (filePath.empty() || !boost::filesystem::exists(filePath)) {
-            std::cout << "Could not find: " << filePath << " exiting." << std::endl;
+            spdlog::info("Could not find: {} exiting.", filePath);
             break;
         }
 
@@ -206,7 +203,9 @@ int MarketdataHistoricalRunner::run() {
 
         auto now = std::chrono::system_clock::now();
         std::time_t nowTime = std::chrono::system_clock::to_time_t(now);
-        std::cout << "Processing " << filePath << " started at " << std::ctime(&nowTime);
+        std::string timeStr = std::ctime(&nowTime);
+        if (!timeStr.empty() && timeStr.back() == '\n') timeStr.pop_back();
+        spdlog::info("Processing {} started at {}", filePath, timeStr);
         boost::iostreams::mapped_file_source file(filePath);
         historicalProcessor.nextFile(processedCapturesLoc + kPathSeparator + datePath);
 
@@ -215,7 +214,7 @@ int MarketdataHistoricalRunner::run() {
 
         // Count total lines for progress tracking
         size_t totalLines = countTotalLines(data, end);
-        std::cout << "Total lines to process: " << totalLines << std::endl;
+        spdlog::info("Total lines to process: {}", totalLines);
 
         const char* lineStart = data;
 
@@ -229,12 +228,11 @@ int MarketdataHistoricalRunner::run() {
         int minutes = (totalTime % 3600) / 60;
         int seconds = totalTime % 60;
 
-        std::cout << "Completed processing " << filePath << " in " << hours << "h "
-                  << minutes << "m " << seconds << "s" << std::endl;
+        spdlog::info("Completed processing {} in {}h {}m {}s", filePath, hours, minutes, seconds);
 
         currentDate.tm_mday += 1;
         if (currentDate.tm_year == endDate.tm_year && currentDate.tm_mon == endDate.tm_mon && currentDate.tm_mday == endDate.tm_mday) {
-            std::cout << "Finished processing." << std::endl;
+            spdlog::info("Finished processing.");
             break;
         }
     }
@@ -285,14 +283,14 @@ void MarketdataHistoricalRunner::readFrom(const char* lineStart, const char* end
                 historicalProcessor.process(msgStr);
             }
             catch (const std::exception& e) {
-                std::cerr << "FIX parsing error: " << e.what() << std::endl;
-                std::cerr << "Message was: ";
+                spdlog::error("FIX parsing error: {}", e.what());
+                std::string msgPreview;
                 for (char c : msgStr) {
-                    if (c == '\x01') std::cout << "[SOH]";
-                    else if (std::isprint(c)) std::cout << c;
-                    else std::cout << "[" << static_cast<int>(c) << "]";
+                    if (c == '\x01') msgPreview += "[SOH]";
+                    else if (std::isprint(c)) msgPreview += c;
+                    else msgPreview += "[" + std::to_string(static_cast<int>(c)) + "]";
                 }
-                std::cout << std::endl;
+                spdlog::error("Message was: {}", msgPreview);
             }
         }
 

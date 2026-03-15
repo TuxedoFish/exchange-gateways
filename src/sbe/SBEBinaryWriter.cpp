@@ -29,7 +29,7 @@ void SBEBinaryWriter::openNewFile(const std::string& filename, bool append) {
     if (!file_.is_open()) {
         throw std::runtime_error("Failed to open file for writing: " + filename_);
     }
-    std::cout << (append ? "Opened" : "Created") << " binary file: " << filename_ << std::endl;
+    spdlog::info("{} binary file: {}", (append ? "Opened" : "Created"), filename_);
 }
 
 // Flush and close file
@@ -38,8 +38,7 @@ void SBEBinaryWriter::close() {
     if (file_.is_open()) {
         file_.flush();
         file_.close();
-        std::cout << "Closed file " << filename_ << " after writing "
-            << messageCount_ << " messages" << std::endl;
+        spdlog::info("Closed file {} after writing {} messages", filename_, messageCount_);
     }
     writeMutex_.unlock();
 }

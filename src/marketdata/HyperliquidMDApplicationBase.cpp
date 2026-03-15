@@ -1,5 +1,5 @@
 #include "../../include/marketdata/HyperliquidMDApplicationBase.h"
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <set>
 
 HyperliquidMDApplicationBase::~HyperliquidMDApplicationBase() = default;
@@ -58,7 +58,7 @@ void HyperliquidMDApplicationBase::onMessage(const std::string& message, hyperli
 // hyperliquid::RestEndpointListener
 void HyperliquidMDApplicationBase::onMeta(const hyperliquid::MetaResponse& response) {
     m_universe = response.universe;
-    std::cout << "Loaded " << m_universe.size() << " assets" << std::endl;
+    spdlog::info("Loaded {} assets", m_universe.size());
 
     for (const auto& coin : m_universe)
     {

@@ -1,4 +1,5 @@
 #include "../../include/marketdata/DeribitMessageProcessor.h"
+#include <spdlog/spdlog.h>
 
 DeribitMessageProcessor::DeribitMessageProcessor(SBEBinaryWriter& writer) : MessageProcessor(writer)
 {
@@ -12,7 +13,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataSnapshotFullRefre
     int securityId = getSecurityId(symbol);
     if (securityId == -1)
     {
-        std::cerr << "No matching security found for " << symbol << std::endl;
+        spdlog::error("No matching security found for {}", symbol);
         return;
     }
 
@@ -52,7 +53,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataSnapshotFullRefre
     // Prepare MDFullBook message
     if (!m_writer.prepareMessage(m_mdFullBook))
     {
-        std::cerr << "Error preparing MDFullBook message" << std::endl;
+        spdlog::error("Error preparing MDFullBook message");
         return;
     }
 
@@ -133,7 +134,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataSnapshotFullRefre
     // Write the message
     if (!m_writer.writeMessage(m_mdFullBook))
     {
-        std::cerr << "Error writing MDFullBook message" << std::endl;
+        spdlog::error("Error writing MDFullBook message");
         return;
     }
 
@@ -195,14 +196,14 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataIncrementalRefres
     const int securityId = getSecurityId(symbol);
     if (securityId == -1)
     {
-        std::cerr << "No matching security found for incremental update: " << symbol << std::endl;
+        spdlog::error("No matching security found for incremental update: {}", symbol);
         return;
     }
 
     // Check security status is ONLINE
     if (getSecurityStatus(securityId) != com::liversedge::messages::SecurityStatusEnum::Value::ONLINE)
     {
-        std::cerr << "Ignoring incremental update for offline security: " << symbol << std::endl;
+        spdlog::error("Ignoring incremental update for offline security: {}", symbol);
         return;
     }
 
@@ -263,7 +264,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
         {
             if (!m_writer.prepareMessage(m_securityDefinition))
             {
-                std::cerr << "Error preparing security definition" << std::endl;
+                spdlog::error("Error preparing security definition");
                 removeSecurity(id);
                 continue;
             }
@@ -289,7 +290,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
             // Write out security definition
             if (!m_writer.writeMessage(m_securityDefinition))
             {
-                std::cerr << "Error writing security definition" << std::endl;
+                spdlog::error("Error writing security definition");
                 removeSecurity(id);
                 continue;
             }
@@ -298,7 +299,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
         // Send the security status update
         if (!updateSecurityStatus(id, timestamp, com::liversedge::messages::SecurityStatusEnum::Value::PENDING_SNAPSHOT))
         {
-            std::cerr << "Error updating security definition to PENDING_SNAPSHOT" << std::endl;
+            spdlog::error("Error updating security definition to PENDING_SNAPSHOT");
         }
     }
 
@@ -312,19 +313,19 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
 
 void DeribitMessageProcessor::onMessage(const FIX44::Logout& message, const FIX::SessionID& sessionID)
 {
-    std::cout << "Processing FIX44::Logout message" << std::endl;
+    spdlog::info("Processing FIX44::Logout message");
     const uint64_t timestamp = GetSendingTime(static_cast<FIX44::Message>(message));
     invalidateState(timestamp);
 }
 
 void DeribitMessageProcessor::onMessage(const FIX44::Logon& message, const FIX::SessionID& sessionID)
 {
-    std::cout << "Processing FIX44::Logon message" << std::endl;
+    spdlog::info("Processing FIX44::Logon message");
     const uint64_t timestamp = GetSendingTime(static_cast<FIX44::Message>(message));
 
     if (getConnectionStatus() == com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
     {
-        std::cerr << "Received Logon while still online, invalidating the state" << std::endl;
+        spdlog::error("Received Logon while still online, invalidating the state");
         invalidateState(timestamp);
     }
 
@@ -358,7 +359,7 @@ bool DeribitMessageProcessor::ProcessMDEntry(const T& entry, int securityId, uin
     // Prepare MDUpdate message
     if (!m_writer.prepareMessage(m_mdUpdate))
     {
-        std::cerr << "Error preparing MDUpdate message" << std::endl;
+        spdlog::error("Error preparing MDUpdate message");
         return false;
     }
 
@@ -434,7 +435,7 @@ bool DeribitMessageProcessor::ProcessMDEntry(const T& entry, int securityId, uin
     // Write the MDUpdate message
     if (!m_writer.writeMessage(m_mdUpdate))
     {
-        std::cerr << "Error writing MDUpdate message" << std::endl;
+        spdlog::error("Error writing MDUpdate message");
         return false;
     }
 

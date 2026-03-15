@@ -4,7 +4,7 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 class DateUtils
 {

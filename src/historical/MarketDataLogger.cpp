@@ -1,4 +1,5 @@
 #include "../../include/historical/MarketDataLogger.h"
+#include <spdlog/spdlog.h>
 
 MarketDataLogger::MarketDataLogger(const std::string& logDirectory)
     : m_logDirectory(logDirectory) {
@@ -8,8 +9,7 @@ MarketDataLogger::MarketDataLogger(const std::string& logDirectory)
         boost::filesystem::create_directories(m_logDirectory);
     }
     catch (const boost::filesystem::filesystem_error& e) {
-        std::cerr << "Warning: Failed to create log directory '"
-            << m_logDirectory << "': " << e.what() << std::endl;
+        spdlog::error("Warning: Failed to create log directory '{}': {}", m_logDirectory, e.what());
     }
 }
 
@@ -32,7 +32,7 @@ void MarketDataLogger::writeToLog(const std::string& direction, const std::strin
         }
     }
     catch (const std::exception& e) {
-        std::cerr << "Error writing to log: " << e.what() << std::endl;
+        spdlog::error("Error writing to log: {}", e.what());
     }
 }
 
@@ -48,8 +48,7 @@ void MarketDataLogger::setLogDirectory(const std::string& directory) {
         boost::filesystem::create_directories(m_logDirectory);
     }
     catch (const boost::filesystem::filesystem_error& e) {
-        std::cerr << "Warning: Failed to create log directory '"
-            << m_logDirectory << "': " << e.what() << std::endl;
+        spdlog::error("Warning: Failed to create log directory '{}': {}", m_logDirectory, e.what());
     }
 
     // Reset current date to force new file creation
@@ -106,18 +105,18 @@ void MarketDataLogger::ensureLogFileOpenUnsafe() {
 
             if (m_logFile.is_open()) {
                 m_currentLogDate = currentDate;
-                std::cout << "Opened new log file: " << filename << std::endl;
+                spdlog::info("Opened new log file: {}", filename);
             }
             else {
-                std::cerr << "Failed to open log file: " << filename << std::endl;
+                spdlog::error("Failed to open log file: {}", filename);
             }
 
         }
         catch (const boost::filesystem::filesystem_error& e) {
-            std::cerr << "Filesystem error creating log directories: " << e.what() << std::endl;
+            spdlog::error("Filesystem error creating log directories: {}", e.what());
         }
         catch (const std::exception& e) {
-            std::cerr << "Error opening log file: " << e.what() << std::endl;
+            spdlog::error("Error opening log file: {}", e.what());
         }
     }
 }

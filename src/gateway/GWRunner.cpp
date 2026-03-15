@@ -3,7 +3,7 @@
 #include "../../include/gateway/DeribitGWApplication.h"
 #include "../../include/util/SimpleConfig.h"
 #include <boost/filesystem.hpp>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -19,14 +19,14 @@ void GWRunner::run() {
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
     // Replay streams
-    std::cout << "Replaying streams..." << std::endl;
+    spdlog::info("Replaying streams...");
     m_ordersHandler.setIsReplay(true);
     while (m_mdPoller->next()) {
     }
     while (m_gwInPoller->next()) {
     }
     m_ordersHandler.setIsReplay(false);
-    std::cout << "Finished replay." << std::endl;
+    spdlog::info("Finished replay.");
 
     while (true) {
         // Poll the marketdata queue
@@ -62,7 +62,7 @@ std::unique_ptr<SBEQueuePoller> GWRunner::createPoller(std::string dataDirectory
     auto poller = std::make_unique<SBEQueuePoller>(dataDirectory, listener);
 
     boost::filesystem::path path = boost::filesystem::path(dataDirectory) / "messages.sbe";
-    std::cout << "Reading from: " << path << std::endl;
+    spdlog::info("Reading from: {}", path.string());
 
     poller->readFrom(path, true); // true = live mode
     return poller;

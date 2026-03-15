@@ -8,7 +8,7 @@
 #include <boost/filesystem.hpp>
 #include <stdexcept>
 #include <chrono>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <boost/iostreams/device/mapped_file.hpp>
 #include "SBEMessageListener.h"
 #include "../../generated/com_liversedge_messages/MessageHeader.h"

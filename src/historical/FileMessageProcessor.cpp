@@ -1,4 +1,5 @@
 #include "../../include/historical/FileMessageProcessor.h"
+#include <spdlog/spdlog.h>
 
 FileMessageProcessor::FileMessageProcessor(const std::string& dataDictionaryFilePath, DeribitMessageProcessor& messageProcessor, SBEBinaryWriter& writer) :
     m_dataDictionary(dataDictionaryFilePath), m_writer(writer), m_processor(messageProcessor) {
@@ -40,16 +41,16 @@ void FileMessageProcessor::process(std::string msgStr) {
         }
     } catch (const FIX::InvalidMessage& e)
     {
-        std::cerr << "Invalid FIX message: " << e.what() << std::endl;
-        std::cerr << "Message string: " << msgStr << std::endl;
+        spdlog::error("Invalid FIX message: {}", e.what());
+        spdlog::error("Message string: {}", msgStr);
     } catch (const FIX::FieldNotFound& e)
     {
-        std::cerr << "Field not found in FIX message: " << e.what() << std::endl;
-        std::cerr << "Message string: " << msgStr << std::endl;
+        spdlog::error("Field not found in FIX message: {}", e.what());
+        spdlog::error("Message string: {}", msgStr);
     } catch (const std::exception& e)
     {
-        std::cerr << "Error processing FIX message: " << e.what() << std::endl;
-        std::cerr << "Message string: " << msgStr << std::endl;
+        spdlog::error("Error processing FIX message: {}", e.what());
+        spdlog::error("Message string: {}", msgStr);
     }
 }
 

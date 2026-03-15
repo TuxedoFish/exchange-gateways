@@ -1,4 +1,5 @@
 #include "../../include/gateway/DeribitMessageConverter.h"
+#include <spdlog/spdlog.h>
 
 void DeribitMessageConverter::convertOrderCancelReject(
     const FIX44::OrderCancelReject& message,
@@ -189,7 +190,7 @@ std::uint64_t DeribitMessageConverter::extractSendingTimeFromFix(const FIX::Mess
     }
     catch (const std::exception& e)
     {
-        std::cout << "Warning: SendingTime not found in FIX message, using current time" << std::endl;
+        spdlog::warn("SendingTime not found in FIX message, using current time");
         auto now = std::chrono::system_clock::now();
         auto duration = now.time_since_epoch();
         return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();

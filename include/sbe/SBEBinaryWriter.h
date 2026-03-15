@@ -3,7 +3,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <mutex>
 #include <boost/filesystem.hpp>
@@ -66,7 +66,7 @@ bool SBEBinaryWriter::prepareMessage(T& message) {
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Error preparing message: " << e.what() << std::endl;
+        spdlog::error("Error preparing message: {}", e.what());
         writeMutex_.unlock(); // Release lock on error
         return false;
     }
@@ -82,8 +82,7 @@ bool SBEBinaryWriter::writeMessage(T& message) {
 
         // Ensure we don't exceed buffer size
         if (totalSize > buffer_.size()) {
-            std::cerr << "Message too large for buffer. Size: " << totalSize
-                << ", Buffer: " << buffer_.size() << std::endl;
+            spdlog::error("Message too large for buffer. Size: {}, Buffer: {}", totalSize, buffer_.size());
             writeMutex_.unlock(); // Release lock on error
             return false;
         }
@@ -91,7 +90,7 @@ bool SBEBinaryWriter::writeMessage(T& message) {
         // Write to file
         file_.write(buffer_.data(), totalSize);
         if (!file_.good()) {
-            std::cerr << "Error writing to file" << std::endl;
+            spdlog::error("Error writing to file");
             writeMutex_.unlock(); // Release lock on error
             return false;
         }
@@ -105,7 +104,7 @@ bool SBEBinaryWriter::writeMessage(T& message) {
 
     }
     catch (const std::exception& e) {
-        std::cerr << "Error writing message: " << e.what() << std::endl;
+        spdlog::error("Error writing message: {}", e.what());
         writeMutex_.unlock(); // Release lock on exception
         return false;
     }

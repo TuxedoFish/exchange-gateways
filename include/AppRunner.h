@@ -19,6 +19,7 @@
 #include "historical/DeribitPersister.h"
 #include "historical/HyperliquidPersister.h"
 #include "gateway/HyperliquidOrdersHandler.h"
+#include "gateway/HyperliquidGWApplication.h"
 #include "util/CmdLineOptions.h"
 #include "util/NullLogFactory.h"
 #include "marketdata/DeribitMessageProcessor.h"

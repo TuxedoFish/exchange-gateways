@@ -1,6 +1,6 @@
 #include "../../include/gateway/RefDataHolder.h"
 #include "../../generated/com_liversedge_messages/ActionEnum.h"
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 void RefDataHolder::onSecurityDefinition(com::liversedge::messages::SecurityDefinition& decoder, std::uint64_t timestamp)
 {
@@ -10,7 +10,7 @@ void RefDataHolder::onSecurityDefinition(com::liversedge::messages::SecurityDefi
     if (action == com::liversedge::messages::ActionEnum::ADD)
     {
         auto securityInfo = std::make_unique<SecurityInfo>(decoder);
-        std::cout << "Added security: " << securityInfo->toString() << std::endl;
+        spdlog::info("Added security: {}", securityInfo->toString());
 
         // Build reverse lookup map
         std::string symbol = securityInfo->getSymbol();

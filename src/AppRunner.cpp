@@ -1,5 +1,6 @@
 #include "../include/AppRunner.h"
 #include "../include/gateway/RefDataHolder.h"
+#include <spdlog/spdlog.h>
 #include "../include/marketdata/HyperliquidMDApplication.h"
 #include "../include/sbe/SBEBinaryWriter.h"
 #include "../include/util/ConsoleUtils.h"
@@ -28,12 +29,12 @@ int AppRunner::runMarketdata()
         HyperliquidMDApplication application(config_);
         application.start();
 
-        std::cout << "Publishing messages to: " + config_.getString("md_file_path") << std::endl;
+        spdlog::info("Publishing messages to: {}", config_.getString("md_file_path"));
         ConsoleUtils::waitForUserInput();
         return 1;
     }
 
-    std::cout << "Unrecognized exchange type: " << exchangeName << std::endl;
+    spdlog::error("Unrecognized exchange type: {}", exchangeName);
     return 1;
 }
 
@@ -63,15 +64,19 @@ int AppRunner::runGateway()
     }
     if (exchangeName == "hyperliquid")
     {
-        HyperliquidOrdersHandler ordersHandler(refDataHolder, sbeWriter);
+        HyperliquidGWApplication application(config_, refDataHolder, sbeWriter);
+        application.start();
+
+        HyperliquidOrdersHandler ordersHandler(refDataHolder, application, sbeWriter);
+        application.setOrdersHandler(&ordersHandler);
         GWRunner gatewayRunner(config_, ordersHandler, refDataHolder, sbeWriter);
-        std::string startupMessage = "Publishing inbound executions to: " + config_.getString("gw_inbound_file_path");
         gatewayRunner.run();
-        ConsoleUtils::waitForUserInput();
-        return 1;
+
+        application.stop();
+        return 0;
     }
 
-    std::cout << "Unrecognized exchange type: " << exchangeName << std::endl;
+    spdlog::error("Unrecognized exchange type: {}", exchangeName);
     return 1;
 }
 
@@ -100,12 +105,12 @@ int AppRunner::runMarketdataHistoricalStorage()
         HyperliquidPersister application(config_);
         application.start();
 
-        std::cout << "Publishing raw WS messages to: " + config_.getString("md_raw_file_path") << std::endl;
+        spdlog::info("Publishing raw WS messages to: {}", config_.getString("md_raw_file_path"));
         ConsoleUtils::waitForUserInput();
         application.stop();
         return 1;
     }
 
-    std::cout << "Unrecognized exchange type: " << exchangeName << std::endl;
+    spdlog::error("Unrecognized exchange type: {}", exchangeName);
     return 1;
 }

@@ -2,6 +2,7 @@
 #include "../../include/sbe/SBEUtils.h"
 #include <spdlog/spdlog.h>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <iomanip>
 
@@ -51,11 +52,15 @@ void HyperliquidMessageProcessor::onConnected()
 void HyperliquidMessageProcessor::onDisconnected(bool hasError, const std::string& errMsg)
 {
     m_observedCoins.clear();
+    m_pendingSecDefs.clear();
     invalidateState(0);
 }
 
 void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& response)
 {
+    auto now = std::chrono::system_clock::now();
+    m_metaReceivedTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+
     for (const auto& asset : response.universe)
     {
         if (m_desiredCoins.find(asset.name) == m_desiredCoins.end())
@@ -66,50 +71,7 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
         m_observedCoins.insert(asset.name);
 
         int id = createSecurity(asset.name);
-
-        if (m_shouldOutput)
-        {
-            if (!m_writer.prepareMessage(m_securityDefinition))
-            {
-                spdlog::error("Error preparing security definition for {}", asset.name);
-                removeSecurity(id);
-                continue;
-            }
-
-            // Metadata
-            m_securityDefinition.id(id);
-            m_securityDefinition.timestamp(0);
-            m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
-
-            // TODO: Currency -> QtyCurrency | CommCurrency -> AmtCurrency
-            m_securityDefinition.currency(com::liversedge::messages::Currency::CONTRACT);
-            m_securityDefinition.commCurrency(com::liversedge::messages::Currency::USDC);
-            m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDC);
-
-            // Every contract treated as a perpetual futures contract
-            m_securityDefinition.securityType(com::liversedge::messages::SecurityType::FUT);
-            m_securityDefinition.contractMultiplier().mantissa(SBEUtils::stringToMantissa("1", -8));
-            m_securityDefinition.settlType(com::liversedge::messages::SettlType::REGULAR);
-            m_securityDefinition.maturityDate().year(3000) // Consistent with Deribit perpetual
-                                               .month(1)
-                                               .day(1);
-
-            // Price precision: max decimal places = MAX_DECIMALS(6) - szDecimals
-            int instrumentPricePrecision = 6 - asset.szDecimals;
-            m_securityDefinition.instrumentPricePrecision(instrumentPricePrecision);
-            m_securityDefinition.minPriceIncrement().mantissa(SBEUtils::powerOfTenMantissa(instrumentPricePrecision, -8));
-            m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(asset.szDecimals, -8));
-
-            // Variable length fields must be last
-            SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), asset.name);
-
-            if (!m_writer.writeMessage(m_securityDefinition))
-            {
-                spdlog::error("Error writing security definition for {}", asset.name);
-                removeSecurity(id);
-                continue;
-            }
-        }
+        m_pendingSecDefs[id] = {asset.name, asset.szDecimals, id};
 
         if (!updateSecurityStatus(id, 0, com::liversedge::messages::SecurityStatusEnum::Value::PENDING_SNAPSHOT))
         {
@@ -131,8 +93,7 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
         }
         spdlog::info("Waiting for coins: {}", missingCoins);
     } else {
-        spdlog::info("All desired coins available.");
-        updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, 0);
+        spdlog::info("All desired coins available, waiting for first price updates before going ONLINE.");
     }
 }
 
@@ -153,6 +114,25 @@ void HyperliquidMessageProcessor::onL2BookLevel(const hyperliquid::L2BookUpdate&
     if (getSecurityStatus(securityId) == com::liversedge::messages::SecurityStatusEnum::Value::PENDING_SNAPSHOT)
     {
         updateSecurityStatus(securityId, book.time * 1000 * 1000, com::liversedge::messages::SecurityStatusEnum::Value::ONLINE);
+    }
+
+    // Emit deferred SecurityDefinition on first price update
+    auto pendingIt = m_pendingSecDefs.find(securityId);
+    if (pendingIt != m_pendingSecDefs.end())
+    {
+        emitSecurityDefinition(pendingIt->second, std::stod(level.px));
+        m_pendingSecDefs.erase(pendingIt);
+    }
+
+    if (!m_pendingSecDefs.empty())
+    {
+        drainTimedOutSecDefs(book.time);
+    }
+
+    if (m_pendingSecDefs.empty() && getConnectionStatus() != com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
+    {
+        spdlog::info("All SecurityDefinitions emitted, going ONLINE.");
+        updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, book.time * 1000 * 1000);
     }
 
     if (!m_shouldOutput)
@@ -217,4 +197,106 @@ void HyperliquidMessageProcessor::onTrade(const hyperliquid::Trade& trade)
     {
         spdlog::error("Error writing MDUpdate message");
     }
+}
+
+void HyperliquidMessageProcessor::emitSecurityDefinition(const PendingAsset& asset, double price)
+{
+    int maxDecimals = 6 - asset.szDecimals;
+
+    int sigFigDecimals = maxDecimals;
+    if (price > 0)
+    {
+        int intDigits = static_cast<int>(std::floor(std::log10(price))) + 1;
+        sigFigDecimals = std::max(0, 5 - intDigits);
+    }
+
+    int instrumentPricePrecision = std::min(maxDecimals, sigFigDecimals);
+
+    spdlog::info("SecurityDefinition {} price={} szDecimals={} maxDecimals={} sigFigDecimals={} precision={}",
+                 asset.name, price, asset.szDecimals, maxDecimals, sigFigDecimals, instrumentPricePrecision);
+
+    if (!m_shouldOutput) return;
+
+    if (!m_writer.prepareMessage(m_securityDefinition))
+    {
+        spdlog::error("Error preparing security definition for {}", asset.name);
+        removeSecurity(asset.securityId);
+        return;
+    }
+
+    m_securityDefinition.id(asset.securityId);
+    m_securityDefinition.timestamp(0);
+    m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
+    m_securityDefinition.currency(com::liversedge::messages::Currency::CONTRACT);
+    m_securityDefinition.commCurrency(com::liversedge::messages::Currency::USDC);
+    m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDC);
+    m_securityDefinition.securityType(com::liversedge::messages::SecurityType::FUT);
+    m_securityDefinition.contractMultiplier().mantissa(SBEUtils::stringToMantissa("1", -8));
+    m_securityDefinition.settlType(com::liversedge::messages::SettlType::REGULAR);
+    m_securityDefinition.maturityDate().year(3000).month(1).day(1);
+    m_securityDefinition.instrumentPricePrecision(instrumentPricePrecision);
+    m_securityDefinition.minPriceIncrement().mantissa(SBEUtils::powerOfTenMantissa(instrumentPricePrecision, -8));
+    m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(asset.szDecimals, -8));
+    SBEUtils::setQty(m_securityDefinition.minSize(), "0");
+    SBEUtils::setQty(m_securityDefinition.minAmount(), "10");
+    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), asset.name);
+
+    if (!m_writer.writeMessage(m_securityDefinition))
+    {
+        spdlog::error("Error writing security definition for {}", asset.name);
+        removeSecurity(asset.securityId);
+    }
+}
+
+void HyperliquidMessageProcessor::emitSecurityDefinitionFromMeta(const PendingAsset& asset)
+{
+    int instrumentPricePrecision = 6 - asset.szDecimals;
+
+    spdlog::warn("No price received for [{}], sending SecurityDefinition from raw metadata precision={}",
+                 asset.name, instrumentPricePrecision);
+
+    if (!m_shouldOutput) return;
+
+    if (!m_writer.prepareMessage(m_securityDefinition))
+    {
+        spdlog::error("Error preparing security definition for {}", asset.name);
+        removeSecurity(asset.securityId);
+        return;
+    }
+
+    m_securityDefinition.id(asset.securityId);
+    m_securityDefinition.timestamp(0);
+    m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
+    m_securityDefinition.currency(com::liversedge::messages::Currency::CONTRACT);
+    m_securityDefinition.commCurrency(com::liversedge::messages::Currency::USDC);
+    m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDC);
+    m_securityDefinition.securityType(com::liversedge::messages::SecurityType::FUT);
+    m_securityDefinition.contractMultiplier().mantissa(SBEUtils::stringToMantissa("1", -8));
+    m_securityDefinition.settlType(com::liversedge::messages::SettlType::REGULAR);
+    m_securityDefinition.maturityDate().year(3000).month(1).day(1);
+    m_securityDefinition.instrumentPricePrecision(instrumentPricePrecision);
+    m_securityDefinition.minPriceIncrement().mantissa(SBEUtils::powerOfTenMantissa(instrumentPricePrecision, -8));
+    m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(asset.szDecimals, -8));
+    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), asset.name);
+
+    if (!m_writer.writeMessage(m_securityDefinition))
+    {
+        spdlog::error("Error writing security definition for {}", asset.name);
+        removeSecurity(asset.securityId);
+    }
+}
+
+void HyperliquidMessageProcessor::drainTimedOutSecDefs(uint64_t bookTimeMs)
+{
+    if (m_pendingSecDefs.empty() || m_metaReceivedTimeMs == 0) return;
+
+    auto now = std::chrono::system_clock::now();
+    uint64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    if (nowMs - m_metaReceivedTimeMs < 10000) return;
+
+    for (const auto& [id, asset] : m_pendingSecDefs)
+    {
+        emitSecurityDefinitionFromMeta(asset);
+    }
+    m_pendingSecDefs.clear();
 }

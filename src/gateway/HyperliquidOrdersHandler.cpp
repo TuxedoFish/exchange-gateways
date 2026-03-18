@@ -27,18 +27,18 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         auto quantity = SBEUtils::convertQty(decoder.quantity());
         std::string clientOrderId = SBEUtils::extractVarString(decoder.clientOrderId(), decoder.sbeBlockLength());
 
-        spdlog::info("OrdersHandler: Received SBE NewOrder clientOrderId={} securityId={} side={} tif={} price={} qty={}",
+        spdlog::info("Received SBE NewOrder clientOrderId={} securityId={} side={} tif={} price={} qty={}",
                      clientOrderId, securityId, (int)side, (int)timeInForce, price.str(8, std::ios_base::fixed), quantity.str(8, std::ios_base::fixed));
 
         const SecurityInfo* secInfo = m_refDataHolder.getSecurityInfo(securityId);
         if (!secInfo) {
-            spdlog::error("OrdersHandler: Security not found for ID: {}", securityId);
+            spdlog::error("Security not found for ID: {}", securityId);
             sendNewOrderReject(decoder);
             return;
         }
 
         if (!m_gwApplication.isConnected()) {
-            spdlog::error("OrdersHandler: Not connected, rejecting order {}", clientOrderId);
+            spdlog::error("Not connected, rejecting order {}", clientOrderId);
             sendNewOrderReject(decoder);
             return;
         }
@@ -55,13 +55,13 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         m_cloidToClient[cloid] = clientOrderId;
         order.cloid = cloid;
 
-        spdlog::info("OrdersHandler: Sending placeOrder {} cloid={} ({}) price={} size={}",
+        spdlog::info("Sending placeOrder {} cloid={} ({}) price={} size={}",
                      clientOrderId, cloid, secInfo->getSymbol(), order.price, order.size);
         m_gwApplication.trackPendingPlace(cloid, securityId);
         m_gwApplication.getWebsocket().placeOrder({order}, hyperliquid::Grouping::Na);
 
     } catch (const std::exception& e) {
-        spdlog::error("OrdersHandler: Error processing NewOrder: {}", e.what());
+        spdlog::error("Error processing NewOrder: {}", e.what());
         sendNewOrderReject(decoder);
     }
 }
@@ -81,23 +81,23 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         auto quantity = SBEUtils::convertQty(decoder.quantity());
         std::string clientOrderId = SBEUtils::extractVarString(decoder.clientOrderId(), decoder.sbeBlockLength());
 
-        spdlog::info("OrdersHandler: Received SBE AmendOrder clientOrderId={} securityId={} side={} tif={} price={} qty={}",
+        spdlog::info("Received SBE AmendOrder clientOrderId={} securityId={} side={} tif={} price={} qty={}",
                      clientOrderId, securityId, (int)side, (int)timeInForce, price.str(0, std::ios_base::fixed), quantity.str(0, std::ios_base::fixed));
 
         const SecurityInfo* secInfo = m_refDataHolder.getSecurityInfo(securityId);
         if (!secInfo) {
-            spdlog::error("OrdersHandler: Security not found for ID: {}", securityId);
+            spdlog::error("Security not found for ID: {}", securityId);
             return;
         }
 
         if (!m_gwApplication.isConnected()) {
-            spdlog::error("OrdersHandler: Not connected, cannot amend {}", clientOrderId);
+            spdlog::error("Not connected, cannot amend {}", clientOrderId);
             return;
         }
 
         auto it = m_clientToCloid.find(clientOrderId);
         if (it == m_clientToCloid.end()) {
-            spdlog::error("OrdersHandler: No cloid mapping found for amend clientOrderId={}", clientOrderId);
+            spdlog::error("No cloid mapping found for amend clientOrderId={}", clientOrderId);
             return;
         }
         const std::string& cloid = it->second;
@@ -117,10 +117,10 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
 
         m_gwApplication.trackPendingModify(cloid, securityId);
         m_gwApplication.getWebsocket().modifyOrder(modify);
-        spdlog::info("OrdersHandler: Sent modifyOrder for {} cloid={} ({})", clientOrderId, cloid, secInfo->getSymbol());
+        spdlog::info("Sent modifyOrder for {} cloid={} ({})", clientOrderId, cloid, secInfo->getSymbol());
 
     } catch (const std::exception& e) {
-        spdlog::error("OrdersHandler: Error processing AmendOrder: {}", e.what());
+        spdlog::error("Error processing AmendOrder: {}", e.what());
     }
 }
 
@@ -136,25 +136,25 @@ void HyperliquidOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOr
         std::string clientOrderId = SBEUtils::extractVarString(decoder.clientOrderId(), decoder.sbeBlockLength());
         std::string origClientOrderId = SBEUtils::extractVarString(decoder.origClientOrderId(), decoder.sbeBlockLength(), clientOrderId.length());
 
-        spdlog::info("OrdersHandler: Received SBE CancelOrder clientOrderId={} origClientOrderId={} securityId={}",
+        spdlog::info("Received SBE CancelOrder clientOrderId={} origClientOrderId={} securityId={}",
                      clientOrderId, origClientOrderId, securityId);
 
         const SecurityInfo* secInfo = m_refDataHolder.getSecurityInfo(securityId);
         if (!secInfo) {
-            spdlog::error("OrdersHandler: Security not found for ID: {}", securityId);
+            spdlog::error("Security not found for ID: {}", securityId);
             sendCancelReject(decoder);
             return;
         }
 
         if (!m_gwApplication.isConnected()) {
-            spdlog::error("OrdersHandler: Not connected, cannot cancel {}", origClientOrderId);
+            spdlog::error("Not connected, cannot cancel {}", origClientOrderId);
             sendCancelReject(decoder);
             return;
         }
 
         auto it = m_clientToCloid.find(origClientOrderId);
         if (it == m_clientToCloid.end()) {
-            spdlog::error("OrdersHandler: No cloid mapping found for cancel origClientOrderId={}", origClientOrderId);
+            spdlog::error("No cloid mapping found for cancel origClientOrderId={}", origClientOrderId);
             sendCancelReject(decoder);
             return;
         }
@@ -166,10 +166,10 @@ void HyperliquidOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOr
 
         m_gwApplication.trackPendingCancel(cloid, securityId);
         m_gwApplication.getWebsocket().cancelOrderByCloid({cancel});
-        spdlog::info("OrdersHandler: Sent cancelOrderByCloid for {} cloid={} ({})", origClientOrderId, cloid, secInfo->getSymbol());
+        spdlog::info("Sent cancelOrderByCloid for {} cloid={} ({})", origClientOrderId, cloid, secInfo->getSymbol());
 
     } catch (const std::exception& e) {
-        spdlog::error("OrdersHandler: Error processing CancelOrder: {}", e.what());
+        spdlog::error("Error processing CancelOrder: {}", e.what());
         sendCancelReject(decoder);
     }
 }
@@ -179,7 +179,7 @@ void HyperliquidOrdersHandler::sendCancelReject(com::liversedge::messages::Cance
     com::liversedge::messages::OrderCancelReject sbeReject;
     if (m_sbeWriter.prepareMessage(sbeReject)) {
         DeribitMessageConverter::createInternalOrderCancelReject(cancelOrder, sbeReject);
-        spdlog::info("OrdersHandler: Sending SBE OrderCancelReject securityId={}", cancelOrder.securityId());
+        spdlog::info("Sending SBE OrderCancelReject securityId={}", cancelOrder.securityId());
         m_sbeWriter.writeMessage(sbeReject);
     }
 }
@@ -189,7 +189,7 @@ void HyperliquidOrdersHandler::sendNewOrderReject(com::liversedge::messages::New
     com::liversedge::messages::ExecutionReport sbeExecReport;
     if (m_sbeWriter.prepareMessage(sbeExecReport)) {
         DeribitMessageConverter::createNewOrderReject(newOrder, sbeExecReport);
-        spdlog::info("OrdersHandler: Sending SBE NewOrderReject securityId={}", newOrder.securityId());
+        spdlog::info("Sending SBE NewOrderReject securityId={}", newOrder.securityId());
         m_sbeWriter.writeMessage(sbeExecReport);
     }
 }
@@ -200,7 +200,7 @@ std::string HyperliquidOrdersHandler::lookupClientOrderId(const std::string& clo
     if (it != m_cloidToClient.end()) {
         return it->second;
     }
-    spdlog::warn("OrdersHandler: No client order ID mapping found for cloid={}", cloid);
+    spdlog::warn("No client order ID mapping found for cloid={}", cloid);
     return "";
 }
 
@@ -208,7 +208,7 @@ std::string HyperliquidOrdersHandler::lookupClientOrderIdByOid(uint64_t oid) con
 {
     auto oidIt = m_oidToCloid.find(oid);
     if (oidIt == m_oidToCloid.end()) {
-        spdlog::warn("OrdersHandler: No cloid mapping found for oid={}", oid);
+        spdlog::warn("No cloid mapping found for oid={}", oid);
         return "";
     }
     return lookupClientOrderId(oidIt->second);

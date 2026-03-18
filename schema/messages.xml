@@ -183,6 +183,8 @@
                description="Type of instrument i.e spread or outright."/>
         <field name="timestamp" id="13" type="uint64" description="Timestamp in nanoseconds."/>
         <field name="action" id="14" type="ActionEnum" description="Whether this security is being added or removed"/>
+        <field name="minSize" id="15" type="Qty" description="Minimum size on order."/>
+        <field name="minAmount" id="16" type="Qty" description="Minimum amount on order."/>
         <field name="symbol" id="2" type="VarStringEncoding" description="Security symbol."/>
     </sbe:message>
 

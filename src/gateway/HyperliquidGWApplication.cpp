@@ -43,7 +43,7 @@ void HyperliquidGWApplication::onPostResponse(const std::string& message, hyperl
 
 void HyperliquidGWApplication::onConnected()
 {
-    spdlog::info("HyperliquidGW: Connected");
+    spdlog::info("Connected");
     m_connected = true;
     m_websocket->subscribe(hyperliquid::SubscriptionType::OrderUpdates);
     m_websocket->subscribe(hyperliquid::SubscriptionType::UserFills);
@@ -51,7 +51,7 @@ void HyperliquidGWApplication::onConnected()
 
 void HyperliquidGWApplication::onDisconnected(bool hasError, const std::string& errMsg)
 {
-    spdlog::info("HyperliquidGW: Disconnected{}", hasError ? " (error: " + errMsg + ")" : "");
+    spdlog::info("Disconnected{}", hasError ? " (error: " + errMsg + ")" : "");
     m_connected = false;
 
     std::lock_guard<std::mutex> lock(m_pendingMutex);
@@ -64,13 +64,13 @@ void HyperliquidGWApplication::onDisconnected(bool hasError, const std::string& 
 
 void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& update, bool isSnapshot)
 {
-    spdlog::info("HyperliquidGW: OrderUpdate coin={} side={} status={} oid={} sz={} limitPx={} cloid={} snapshot={}",
+    spdlog::info("OrderUpdate coin={} side={} status={} oid={} sz={} limitPx={} cloid={} snapshot={}",
                  update.coin, update.side, hyperliquid::toString(update.status),
                  update.oid, update.sz, update.limitPx, update.cloid, isSnapshot);
 
     if (isSnapshot)
     {
-        spdlog::info("HyperliquidGW: Skipping snapshot order update");
+        spdlog::info("Skipping snapshot order update");
         return;
     }
 
@@ -112,7 +112,7 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), "");
 
-    spdlog::info("HyperliquidGW: Sending SBE ExecutionReport clientOrderId={} securityId={} ordStatus={} side={} price={} orderQty={} leavesQty={} cumQty={}",
+    spdlog::info("Sending SBE ExecutionReport clientOrderId={} securityId={} ordStatus={} side={} price={} orderQty={} leavesQty={} cumQty={}",
                  clientOrderId, m_refDataHolder.getSecurityIdBySymbol(update.coin),
                  (int)mapOrderStatus(update.status), update.side,
                  update.limitPx, update.origSz, update.sz, cumQty);
@@ -131,12 +131,12 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
 
 void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill, bool isSnapshot)
 {
-    spdlog::info("HyperliquidGW: Fill coin={} side={} px={} sz={} oid={} snapshot={}",
+    spdlog::info("Fill coin={} side={} px={} sz={} oid={} snapshot={}",
                  fill.coin, fill.side, fill.px, fill.sz, fill.oid, isSnapshot);
 
     if (isSnapshot)
     {
-        spdlog::info("HyperliquidGW: Skipping snapshot fill");
+        spdlog::info("Skipping snapshot fill");
         return;
     }
 
@@ -169,7 +169,7 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill, bool is
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), "");
 
-    spdlog::info("HyperliquidGW: Sending SBE Fill ExecutionReport clientOrderId={} securityId={} side={} lastPx={} lastQty={}",
+    spdlog::info("Sending SBE Fill ExecutionReport clientOrderId={} securityId={} side={} lastPx={} lastQty={}",
                  clientOrderId, m_refDataHolder.getSecurityIdBySymbol(fill.coin),
                  fill.side, fill.px, fill.sz);
     m_sbeWriter.writeMessage(sbeExecReport);
@@ -179,7 +179,7 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill, bool is
 
 void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderResponse& response)
 {
-    spdlog::info("HyperliquidGW: PlaceOrder response status={}", response.status);
+    spdlog::info("PlaceOrder response status={}", response.status);
 
     for (const auto& s : response.statuses)
     {
@@ -187,16 +187,16 @@ void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderRespons
 
         if (s.error)
         {
-            spdlog::error("HyperliquidGW: PlaceOrder error: {} cloid={}", *s.error, pending.cloid);
+            spdlog::error("PlaceOrder error: {} cloid={}", *s.error, pending.cloid);
             sendNewOrderReject(pending.cloid, pending.securityId, *s.error);
         }
         else if (s.resting)
         {
-            spdlog::info("HyperliquidGW: PlaceOrder resting oid={}", s.resting->oid);
+            spdlog::info("PlaceOrder resting oid={}", s.resting->oid);
         }
         else if (s.filled)
         {
-            spdlog::info("HyperliquidGW: PlaceOrder filled oid={} avgPx={} totalSz={}",
+            spdlog::info("PlaceOrder filled oid={} avgPx={} totalSz={}",
                          s.filled->oid, s.filled->avgPx, s.filled->totalSz);
         }
     }
@@ -204,20 +204,20 @@ void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderRespons
 
 void HyperliquidGWApplication::onModifyOrder(const hyperliquid::ModifyOrderResponse& response)
 {
-    spdlog::info("HyperliquidGW: ModifyOrder response status={}", response.status);
+    spdlog::info("ModifyOrder response status={}", response.status);
 
     auto pending = popPending(m_pendingModifies, "ModifyOrder");
 
     if (response.status != "ok")
     {
-        spdlog::error("HyperliquidGW: ModifyOrder error status={} cloid={}", response.status, pending.cloid);
+        spdlog::error("ModifyOrder error status={} cloid={}", response.status, pending.cloid);
         sendAmendReject(pending.cloid, pending.securityId, response.status);
     }
 }
 
 void HyperliquidGWApplication::onCancelOrder(const hyperliquid::CancelOrderResponse& response)
 {
-    spdlog::info("HyperliquidGW: CancelOrder response status={}", response.status);
+    spdlog::info("CancelOrder response status={}", response.status);
 
     for (const auto& s : response.statuses)
     {
@@ -225,12 +225,12 @@ void HyperliquidGWApplication::onCancelOrder(const hyperliquid::CancelOrderRespo
 
         if (s.error)
         {
-            spdlog::error("HyperliquidGW: CancelOrder error: {} cloid={}", *s.error, pending.cloid);
+            spdlog::error("CancelOrder error: {} cloid={}", *s.error, pending.cloid);
             sendCancelReject(pending.cloid, pending.securityId, *s.error);
         }
         else if (s.success)
         {
-            spdlog::info("HyperliquidGW: CancelOrder success: {}", *s.success);
+            spdlog::info("CancelOrder success: {}", *s.success);
         }
     }
 }
@@ -241,7 +241,7 @@ HyperliquidGWApplication::PendingRequest HyperliquidGWApplication::popPending(
     std::lock_guard<std::mutex> lock(m_pendingMutex);
     if (queue.empty())
     {
-        spdlog::warn("HyperliquidGW: {} response with no pending request", label);
+        spdlog::warn("{} response with no pending request", label);
         return {};
     }
     auto pending = queue.front();
@@ -290,7 +290,7 @@ void HyperliquidGWApplication::sendNewOrderReject(const std::string& cloid, std:
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), reason);
 
-    spdlog::info("HyperliquidGW: Sending NewOrderReject clientOrderId={} reason={}", clientOrderId, reason);
+    spdlog::info("Sending NewOrderReject clientOrderId={} reason={}", clientOrderId, reason);
     m_sbeWriter.writeMessage(sbeExecReport);
 
     if (m_ordersHandler) m_ordersHandler->removeOrder(cloid);
@@ -317,7 +317,7 @@ void HyperliquidGWApplication::sendAmendReject(const std::string& cloid, std::in
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), reason);
 
-    spdlog::info("HyperliquidGW: Sending AmendReject clientOrderId={} reason={}", clientOrderId, reason);
+    spdlog::info("Sending AmendReject clientOrderId={} reason={}", clientOrderId, reason);
     m_sbeWriter.writeMessage(sbeExecReport);
 }
 
@@ -340,7 +340,7 @@ void HyperliquidGWApplication::sendCancelReject(const std::string& cloid, std::i
     SBEUtils::setVarString(sbeReject, sbeReject.origClientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeReject, sbeReject.text(), reason);
 
-    spdlog::info("HyperliquidGW: Sending CancelReject clientOrderId={} reason={}", clientOrderId, reason);
+    spdlog::info("Sending CancelReject clientOrderId={} reason={}", clientOrderId, reason);
     m_sbeWriter.writeMessage(sbeReject);
 }
 

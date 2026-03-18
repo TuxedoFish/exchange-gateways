@@ -17,7 +17,19 @@ public:
 
     void setDesiredCoins(const std::set<std::string>& desiredCoins);
 private:
+    struct PendingAsset {
+        std::string name;
+        int szDecimals;
+        int securityId;
+    };
+
+    void emitSecurityDefinition(const PendingAsset& asset, double price);
+    void emitSecurityDefinitionFromMeta(const PendingAsset& asset);
+    void drainTimedOutSecDefs(uint64_t bookTimeMs);
+
     std::set<std::string> m_desiredCoins;
     std::set<std::string> m_observedCoins;
+    std::unordered_map<int, PendingAsset> m_pendingSecDefs;
     uint64_t m_connectedTimeMs{0};
+    uint64_t m_metaReceivedTimeMs{0};
 };

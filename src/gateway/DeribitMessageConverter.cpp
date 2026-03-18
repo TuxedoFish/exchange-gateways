@@ -107,7 +107,7 @@ void DeribitMessageConverter::convertExecutionReport(
     }
     if (message.isSetField(FIX::FIELD::LastPx))
     {
-        SBEUtils::setPrice(sbeExecReport.lastPx(), message.getField(FIX::FIELD::Price));
+        SBEUtils::setPrice(sbeExecReport.lastPx(), message.getField(FIX::FIELD::LastPx));
     }
     if (message.isSetField(FIX::FIELD::LastQty))
     {

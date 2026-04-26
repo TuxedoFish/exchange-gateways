@@ -62,17 +62,11 @@ void HyperliquidGWApplication::onDisconnected(bool hasError, const std::string& 
 
 // WebsocketMessageHandler
 
-void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& update, bool isSnapshot)
+void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& update)
 {
-    spdlog::info("OrderUpdate coin={} side={} status={} oid={} sz={} limitPx={} cloid={} snapshot={}",
+    spdlog::info("OrderUpdate coin={} side={} status={} oid={} sz={} limitPx={} cloid={}",
                  update.coin, update.side, hyperliquid::toString(update.status),
-                 update.oid, update.sz, update.limitPx, update.cloid, isSnapshot);
-
-    if (isSnapshot)
-    {
-        spdlog::info("Skipping snapshot order update");
-        return;
-    }
+                 update.oid, update.sz, update.limitPx, update.cloid);
 
     com::liversedge::messages::ExecutionReport sbeExecReport;
     if (!m_sbeWriter.prepareMessage(sbeExecReport))
@@ -129,12 +123,12 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     }
 }
 
-void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill, bool isSnapshot)
+void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill)
 {
     spdlog::info("Fill coin={} side={} px={} sz={} oid={} snapshot={}",
-                 fill.coin, fill.side, fill.px, fill.sz, fill.oid, isSnapshot);
+                 fill.coin, fill.side, fill.px, fill.sz, fill.oid, fill.isSnapshot);
 
-    if (isSnapshot)
+    if (fill.isSnapshot)
     {
         spdlog::info("Skipping snapshot fill");
         return;

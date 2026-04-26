@@ -45,8 +45,8 @@ public:
     void onDisconnected(bool hasError, const std::string& errMsg) override;
 
     // WebsocketMessageHandler
-    void onOrderUpdate(const hyperliquid::OrderUpdate& update, bool isSnapshot) override;
-    void onUserFill(const hyperliquid::Fill& fill, bool isSnapshot) override;
+    void onOrderUpdate(const hyperliquid::OrderUpdate& update) override;
+    void onUserFill(const hyperliquid::Fill& fill) override;
 
     // RestEndpointListener
     void onPlaceOrder(const hyperliquid::PlaceOrderResponse& response) override;

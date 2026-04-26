@@ -70,7 +70,7 @@ void DeribitApplicationBase::getSymbols()
     }
 
     secListRequest.setField(FIX::SecurityReqID("SYMBOLS_002"));
-    secListRequest.setField(FIX::SecurityType("FUTCO"));  // Futures
+    secListRequest.setField(FIX::SecurityType("FUTCO"));  // Spreads
 
     try {
         FIX::Session::sendToTarget(secListRequest, m_sessionID);
@@ -78,9 +78,24 @@ void DeribitApplicationBase::getSymbols()
     catch (const std::exception& e) {
         spdlog::error("Error sending SecurityListRequest: {}", e.what());
     }
+
+    FIX::Message secListRequestSpot;
+    secListRequestSpot.getHeader().setField(FIX::MsgType("x")); // SecurityListRequest
+
+    // Required fields
+    secListRequestSpot.setField(FIX::SecurityReqID("SYMBOLS_003"));
+    secListRequestSpot.setField(FIX::SecurityListRequestType(4));
+    secListRequestSpot.setField(FIX::SecurityType("FXSPOT"));  // Spot
+
+    try {
+        FIX::Session::sendToTarget(secListRequestSpot, m_sessionID);
+    }
+    catch (const std::exception& e) {
+        spdlog::error("Error sending SecurityListRequest: {}", e.what());
+    }
 }
 
-void DeribitApplicationBase::subscribe(std::string symbols[], int nSymbols)
+void DeribitApplicationBase::subscribe(std::vector<std::string> symbols)
 {
     // Create market data request with default constructor
     FIX44::MarketDataRequest mdRequest;
@@ -114,7 +129,7 @@ void DeribitApplicationBase::subscribe(std::string symbols[], int nSymbols)
 
     // Add symbol
     FIX44::MarketDataRequest::NoRelatedSym symbolGroup;
-    for (int i = 0; i < nSymbols; i++) {
+    for (int i = 0; i < symbols.size(); i++) {
         symbolGroup.set(FIX::Symbol(symbols[i]));
         mdRequest.addGroup(symbolGroup);
     }
@@ -144,22 +159,32 @@ void DeribitApplicationBase::onMessage(const FIX44::SecurityList& message, const
     FIX::NoRelatedSym noSecuritiesField;
     message.get(noSecuritiesField);
     int noSecurities = noSecuritiesField.getValue();
-    std::string* symbols = new std::string[noSecurities];
+    std::vector<std::string> symbols{};
 
     // FIX repeating groups are 1-indexed
     for (int i = 1; i < noSecurities + 1; i++) {
         FIX44::SecurityList::NoRelatedSym security;
         message.getGroup(i, security);
+        FIX::SecurityType securityType;
+        security.get(securityType);
         FIX::Symbol symbol;
         security.get(symbol);
-        symbols[i-1] = symbol.getString();
+        auto symbolStr = symbol.getString();
+        if (securityType == FIX::SecurityType_FX_SPOT && symbolStr.find("BTC_USDC") == std::string::npos)
+        {
+            // Ignore non BTC spot instruments
+            spdlog::debug("Ignoring spot instrument: {}", symbolStr);
+            continue;
+        }
+        symbols.push_back(symbolStr);
     }
 
     std::string symbolsList;
-    for (int i = 0; i < noSecurities; i++) {
-        symbolsList += symbols[i] + ", ";
+    for (int i = 0; i < symbols.size(); i++) {
+        if (i > 0) symbolsList += ", ";
+        symbolsList += symbols[i];
     }
     spdlog::info("Symbols: {}", symbolsList);
-    subscribe(symbols, noSecurities);
+    subscribe(symbols);
 }
 

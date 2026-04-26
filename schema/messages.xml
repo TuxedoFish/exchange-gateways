@@ -56,12 +56,14 @@
             <validValue name="REGULAR" description="regular">0</validValue>
             <validValue name="W1" description="week">1</validValue>
             <validValue name="M1" description="monthly">2</validValue>
-            <validValue name="M3" description="3 monthly">3</validValue>
+            <validValue name="M3" description="quarterly">3</validValue>
+            <validValue name="D1" description="daily">4</validValue>
         </enum>
 
         <enum name="SecurityType" encodingType="uint8">
             <validValue name="FUT" description="future">0</validValue>
             <validValue name="FUTCO" description="future combination">1</validValue>
+            <validValue name="FXSPOT" description="spot">2</validValue>
         </enum>
 
         <enum name="ActionEnum" encodingType="uint8">
@@ -87,6 +89,12 @@
             <validValue name="ETH" description="ethereum">2</validValue>
             <validValue name="USDC" description="us dollar coin">3</validValue>
             <validValue name="CONTRACT" description="contracts">4</validValue>
+        </enum>
+
+        <enum name="MarginingType" encodingType="uint8">
+            <validValue name="SPOT" description="Spot contracts">0</validValue>
+            <validValue name="LINEAR" description="Contracts denominated in a linear way">1</validValue>
+            <validValue name="INVERSE" description="Contracts denominated in an inverse way">2</validValue>
         </enum>
 
         <enum name="MDUpdateType" encodingType="uint8">
@@ -168,8 +176,8 @@
 
     <sbe:message name="SecurityDefinition" id="101" description="Security Definition Message">
         <field name="id" id="1" type="int32" description="Internal security identifier."/>
-        <field name="currency" id="3" type="Currency" description="Currency used for pricing"/>
-        <field name="commCurrency" id="4" type="Currency" description="Currency used for commission"/>
+        <field name="baseCurrency" id="3" type="Currency" description="Currency used for pricing"/>
+        <field name="quoteCurrency" id="4" type="Currency" description="Currency used for commission"/>
         <field name="settlCurrency" id="5" type="Currency" description="Currency of settlement denomination."/>
         <field name="settlType" id="6" type="SettlType" description="Settlement period."/>
         <field name="maturityDate" id="7" type="Date" description="Date of maturity."/>
@@ -185,6 +193,8 @@
         <field name="action" id="14" type="ActionEnum" description="Whether this security is being added or removed"/>
         <field name="minSize" id="15" type="Qty" description="Minimum size on order."/>
         <field name="minAmount" id="16" type="Qty" description="Minimum amount on order."/>
+        <field name="marginingType" id="17" type="MarginingType" description="Margining type (for perps)"/>
+        <field name="positionCurrency" id="18" type="Currency" description="Currency used for position"/>
         <field name="symbol" id="2" type="VarStringEncoding" description="Security symbol."/>
     </sbe:message>
 

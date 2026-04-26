@@ -215,6 +215,11 @@ void HyperliquidMessageProcessor::emitSecurityDefinition(const PendingAsset& ass
     spdlog::info("SecurityDefinition {} price={} szDecimals={} maxDecimals={} sigFigDecimals={} precision={}",
                  asset.name, price, asset.szDecimals, maxDecimals, sigFigDecimals, instrumentPricePrecision);
 
+    emitSecurityDefinitionWithPricePrecision(asset, instrumentPricePrecision);
+}
+
+void HyperliquidMessageProcessor::emitSecurityDefinitionWithPricePrecision(const PendingAsset& asset, int instrumentPricePrecision)
+{
     if (!m_shouldOutput) return;
 
     if (!m_writer.prepareMessage(m_securityDefinition))
@@ -227,10 +232,12 @@ void HyperliquidMessageProcessor::emitSecurityDefinition(const PendingAsset& ass
     m_securityDefinition.id(asset.securityId);
     m_securityDefinition.timestamp(0);
     m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
-    m_securityDefinition.currency(com::liversedge::messages::Currency::CONTRACT);
-    m_securityDefinition.commCurrency(com::liversedge::messages::Currency::USDC);
+    m_securityDefinition.baseCurrency(com::liversedge::messages::Currency::CONTRACT);
+    m_securityDefinition.quoteCurrency(com::liversedge::messages::Currency::USDC);
     m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDC);
+    m_securityDefinition.positionCurrency(com::liversedge::messages::Currency::CONTRACT);
     m_securityDefinition.securityType(com::liversedge::messages::SecurityType::FUT);
+    m_securityDefinition.marginingType(com::liversedge::messages::MarginingType::LINEAR);
     m_securityDefinition.contractMultiplier().mantissa(SBEUtils::stringToMantissa("1", -8));
     m_securityDefinition.settlType(com::liversedge::messages::SettlType::REGULAR);
     m_securityDefinition.maturityDate().year(3000).month(1).day(1);
@@ -239,44 +246,6 @@ void HyperliquidMessageProcessor::emitSecurityDefinition(const PendingAsset& ass
     m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(asset.szDecimals, -8));
     SBEUtils::setQty(m_securityDefinition.minSize(), "0");
     SBEUtils::setQty(m_securityDefinition.minAmount(), "10");
-    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), asset.name);
-
-    if (!m_writer.writeMessage(m_securityDefinition))
-    {
-        spdlog::error("Error writing security definition for {}", asset.name);
-        removeSecurity(asset.securityId);
-    }
-}
-
-void HyperliquidMessageProcessor::emitSecurityDefinitionFromMeta(const PendingAsset& asset)
-{
-    int instrumentPricePrecision = 6 - asset.szDecimals;
-
-    spdlog::warn("No price received for [{}], sending SecurityDefinition from raw metadata precision={}",
-                 asset.name, instrumentPricePrecision);
-
-    if (!m_shouldOutput) return;
-
-    if (!m_writer.prepareMessage(m_securityDefinition))
-    {
-        spdlog::error("Error preparing security definition for {}", asset.name);
-        removeSecurity(asset.securityId);
-        return;
-    }
-
-    m_securityDefinition.id(asset.securityId);
-    m_securityDefinition.timestamp(0);
-    m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
-    m_securityDefinition.currency(com::liversedge::messages::Currency::CONTRACT);
-    m_securityDefinition.commCurrency(com::liversedge::messages::Currency::USDC);
-    m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDC);
-    m_securityDefinition.securityType(com::liversedge::messages::SecurityType::FUT);
-    m_securityDefinition.contractMultiplier().mantissa(SBEUtils::stringToMantissa("1", -8));
-    m_securityDefinition.settlType(com::liversedge::messages::SettlType::REGULAR);
-    m_securityDefinition.maturityDate().year(3000).month(1).day(1);
-    m_securityDefinition.instrumentPricePrecision(instrumentPricePrecision);
-    m_securityDefinition.minPriceIncrement().mantissa(SBEUtils::powerOfTenMantissa(instrumentPricePrecision, -8));
-    m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(asset.szDecimals, -8));
     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), asset.name);
 
     if (!m_writer.writeMessage(m_securityDefinition))
@@ -296,7 +265,10 @@ void HyperliquidMessageProcessor::drainTimedOutSecDefs(uint64_t bookTimeMs)
 
     for (const auto& [id, asset] : m_pendingSecDefs)
     {
-        emitSecurityDefinitionFromMeta(asset);
+        int instrumentPricePrecision = 6 - asset.szDecimals;
+        spdlog::warn("No price received for [{}], sending SecurityDefinition from raw metadata precision={}",
+                     asset.name, instrumentPricePrecision);
+        emitSecurityDefinitionWithPricePrecision(asset, instrumentPricePrecision);
     }
     m_pendingSecDefs.clear();
 }

@@ -72,8 +72,8 @@ void DeribitGWApplication::onMessage(const FIX44::ExecutionReport& message, cons
     if (m_sbeWriter.prepareMessage(sbeExecReport))
     {
         DeribitMessageConverter::convertExecutionReport(message, sbeExecReport, m_refDataHolder);
+        spdlog::info("Sent SBE ExecutionReport: {}", SBEUtils::toString(sbeExecReport));
         m_sbeWriter.writeMessage(sbeExecReport);
-        spdlog::info("Sent SBE ExecutionReport");
     }
 }
 

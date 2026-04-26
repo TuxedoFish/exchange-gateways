@@ -54,11 +54,19 @@ Currency::Value SBEUtils::currencyFromString(const std::string& currency)
     {
         return Currency::ETH;
     }
+    if (currency == "USDC")
+    {
+        return Currency::USDC;
+    }
     return Currency::NULL_VALUE;
 }
 
 SettlType::Value SBEUtils::settlTypeFromString(const std::string& settlType)
 {
+    if (settlType == "D1")
+    {
+        return SettlType::D1;
+    }
     if (settlType == "W1")
     {
         return SettlType::W1;
@@ -87,6 +95,10 @@ SecurityType::Value SBEUtils::securityTypeFromString(const std::string& security
     if (securityType == "FUTCO")
     {
         return SecurityType::FUTCO;
+    }
+    if (securityType == "FXSPOT")
+    {
+        return SecurityType::FXSPOT;
     }
     return SecurityType::NULL_VALUE;
 }

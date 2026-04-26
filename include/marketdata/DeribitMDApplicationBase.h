@@ -38,7 +38,7 @@ public:
     void fromApp(const FIX::Message&, const FIX::SessionID&) noexcept;
 
     // Deribit marketdata functionality
-    void subscribe(std::string[], int);
+    void subscribe(std::vector<std::string>);
     void getSymbols();
 
 private:

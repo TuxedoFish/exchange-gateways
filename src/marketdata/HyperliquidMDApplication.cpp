@@ -1,5 +1,4 @@
 #include "../../include/marketdata/HyperliquidMDApplication.h"
-#include <spdlog/spdlog.h>
 
 HyperliquidMDApplication::HyperliquidMDApplication(const SimpleConfig& config)
     : HyperliquidMDApplicationBase(config), m_processor(m_writer)
@@ -33,6 +32,11 @@ void HyperliquidMDApplication::onMeta(const hyperliquid::MetaResponse& response)
 void HyperliquidMDApplication::onL2BookLevel(const hyperliquid::L2BookUpdate& book, const hyperliquid::PriceLevel& level) {
     m_processor.onL2BookLevel(book, level);
 }
+
+void onBbo(const hyperliquid::BboUpdate& update)
+{
+
+};
 
 void HyperliquidMDApplication::onTrade(const hyperliquid::Trade& trade) {
     m_processor.onTrade(trade);

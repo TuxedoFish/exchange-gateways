@@ -243,7 +243,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
     FIX::NoRelatedSym noSecuritiesField;
     message.get(noSecuritiesField);
     int noSecurities = noSecuritiesField.getValue();
-    bool hasSpreads = false;
+    bool hasSpot = false;
 
     // FIX repeating groups are 1-indexed
     for (int i = 1; i < noSecurities + 1; i++)
@@ -252,12 +252,18 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
         message.getGroup(i, security);
 
         const std::string& symbol = security.getField(FIX::FIELD::Symbol);
+        auto securityType = SBEUtils::securityTypeFromString(security.getField(FIX::FIELD::SecurityType));
+        if (securityType == com::liversedge::messages::SecurityType::FXSPOT && symbol.find("BTC_USDC") == std::string::npos)
+        {
+            // Ignore non BTC spot instruments
+            spdlog::debug("Ignoring spot instrument: {}", symbol);
+            continue;
+        }
         int id = createSecurity(symbol);
 
-        auto securityType = SBEUtils::securityTypeFromString(security.getField(FIX::FIELD::SecurityType));
-        if (securityType == com::liversedge::messages::SecurityType::FUTCO)
+        if (securityType == com::liversedge::messages::SecurityType::FXSPOT)
         {
-            hasSpreads = true;
+            hasSpot = true;
         }
 
         if (m_shouldOutput)
@@ -271,18 +277,36 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
 
             // Add all security information
             m_securityDefinition.id(id);
-            m_securityDefinition.currency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::Currency)));
-            m_securityDefinition.commCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::CommCurrency)));
-            m_securityDefinition.settlCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::SettlCurrency)));
+
+            if (securityType == com::liversedge::messages::SecurityType::FXSPOT)
+            {
+                m_securityDefinition.baseCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::Currency))); // e.g. BTC
+                m_securityDefinition.quoteCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::SettlCurrency))); // e.g. USDC
+                m_securityDefinition.settlCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::SettlCurrency))); // e.g. USDC
+                m_securityDefinition.positionCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::Currency))); // e.g. USDC
+                SBEUtils::setPrice(m_securityDefinition.contractMultiplier(), security.getField(FIX::FIELD::ContractMultiplier));
+                SBEUtils::setQty(m_securityDefinition.minSizeIncrement(), security.getField(FIX::FIELD::MinTradeVol));
+                SBEUtils::setQty(m_securityDefinition.minSize(), security.getField(FIX::FIELD::MinTradeVol));
+                SBEUtils::setQty(m_securityDefinition.minAmount(), "0");
+                m_securityDefinition.marginingType(com::liversedge::messages::MarginingType::SPOT); // Margining always in base
+            } else
+            {
+                // Really this is an inverse contract so position -> CONTRACT base -> BTC quote -> USD type -> inverted (e.g. 1 contract = 10 USD)
+                m_securityDefinition.baseCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::Currency))); // Bit of a hack - USD
+                m_securityDefinition.quoteCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::CommCurrency))); // Bit of a hack - BTC
+                m_securityDefinition.settlCurrency(SBEUtils::currencyFromString(security.getField(FIX::FIELD::SettlCurrency))); // Settle currency (e.g. USD)
+                m_securityDefinition.positionCurrency(com::liversedge::messages::Currency::CONTRACT);
+                SBEUtils::setPrice(m_securityDefinition.contractMultiplier(), security.getField(FIX::FIELD::ContractMultiplier));
+                SBEUtils::setQty(m_securityDefinition.minSizeIncrement(), security.getField(FIX::FIELD::MinTradeVol));
+                SBEUtils::setQty(m_securityDefinition.minSize(), security.getField(FIX::FIELD::MinTradeVol));
+                SBEUtils::setQty(m_securityDefinition.minAmount(), "0");
+                m_securityDefinition.marginingType(com::liversedge::messages::MarginingType::INVERSE); // Deribit contracts are inverse
+            }
+            m_securityDefinition.instrumentPricePrecision(std::stoi(security.getField(FIX::FIELD::InstrumentPricePrecision)));
             m_securityDefinition.settlType(SBEUtils::settlTypeFromString(security.getField(FIX::FIELD::SettlType)));
             SBEUtils::setDate(m_securityDefinition.maturityDate(), security.getField(FIX::FIELD::MaturityDate));
             SBEUtils::setPrice(m_securityDefinition.minPriceIncrement(), security.getField(FIX::FIELD::MinPriceIncrement));
-            m_securityDefinition.instrumentPricePrecision(std::stoi(security.getField(FIX::FIELD::InstrumentPricePrecision)));
-            SBEUtils::setQty(m_securityDefinition.minSizeIncrement(), security.getField(FIX::FIELD::MinTradeVol));
             // Min size is 1 contract
-            SBEUtils::setQty(m_securityDefinition.minSize(), security.getField(FIX::FIELD::MinTradeVol));
-            SBEUtils::setQty(m_securityDefinition.minAmount(), "0");
-            SBEUtils::setPrice(m_securityDefinition.contractMultiplier(), security.getField(FIX::FIELD::ContractMultiplier));
             m_securityDefinition.securityType(securityType);
             m_securityDefinition.timestamp(timestamp);
             m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
@@ -306,7 +330,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
         }
     }
 
-    if (hasSpreads)
+    if (hasSpot)
     {
         // Bit of a hack but once the spreads are all processed then we are online
         updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, timestamp);

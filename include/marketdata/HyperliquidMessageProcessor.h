@@ -24,7 +24,7 @@ private:
     };
 
     void emitSecurityDefinition(const PendingAsset& asset, double price);
-    void emitSecurityDefinitionFromMeta(const PendingAsset& asset);
+    void emitSecurityDefinitionWithPricePrecision(const PendingAsset& asset, int instrumentPricePrecision);
     void drainTimedOutSecDefs(uint64_t bookTimeMs);
 
     std::set<std::string> m_desiredCoins;

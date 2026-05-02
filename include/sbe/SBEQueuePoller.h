@@ -81,4 +81,10 @@ private:
     bool initializeFileMapping();
     void closeResources();
     std::uint64_t getCurrentTimestamp() const;
+    bool handleBufferTooSmall(const char* messageType, std::size_t actualMessageLength);
+
+    // Stuck detection for partial messages
+    static constexpr std::size_t FAILED_POLL_LOG_THRESHOLD = 5;
+    std::size_t m_lastProcessedPosition = 0;
+    std::size_t m_consecutiveFailedPolls = 0;
 };

@@ -97,42 +97,51 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
     }
 }
 
-void HyperliquidMessageProcessor::onL2BookLevel(const hyperliquid::L2BookUpdate& book, const hyperliquid::PriceLevel& level)
+void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& snapshot)
 {
-    if (m_connectedTimeMs > 0 && book.time + STALE_THRESHOLD_MS < m_connectedTimeMs)
+    if (m_connectedTimeMs > 0 && snapshot.time + STALE_THRESHOLD_MS < m_connectedTimeMs)
     {
         return;
     }
 
-    int securityId = getSecurityId(book.coin);
+    int securityId = getSecurityId(snapshot.coin);
     if (securityId == -1)
     {
         return;
     }
 
-    // Transition from PENDING_SNAPSHOT to ONLINE on first book level
+    uint64_t timestampNanos = snapshot.time * 1000 * 1000;
+
+    // Transition from PENDING_SNAPSHOT to ONLINE on first snapshot
     if (getSecurityStatus(securityId) == com::liversedge::messages::SecurityStatusEnum::Value::PENDING_SNAPSHOT)
     {
-        updateSecurityStatus(securityId, book.time * 1000 * 1000, com::liversedge::messages::SecurityStatusEnum::Value::ONLINE);
+        updateSecurityStatus(securityId, timestampNanos, com::liversedge::messages::SecurityStatusEnum::Value::ONLINE);
     }
 
     // Emit deferred SecurityDefinition on first price update
     auto pendingIt = m_pendingSecDefs.find(securityId);
     if (pendingIt != m_pendingSecDefs.end())
     {
-        emitSecurityDefinition(pendingIt->second, std::stod(level.px));
+        if (snapshot.numBids > 0)
+        {
+            emitSecurityDefinition(pendingIt->second, std::stod(snapshot.bids[0].px));
+        }
+        else if (snapshot.numAsks > 0)
+        {
+            emitSecurityDefinition(pendingIt->second, std::stod(snapshot.asks[0].px));
+        }
         m_pendingSecDefs.erase(pendingIt);
     }
 
     if (!m_pendingSecDefs.empty())
     {
-        drainTimedOutSecDefs(book.time);
+        drainTimedOutSecDefs(snapshot.time);
     }
 
     if (m_pendingSecDefs.empty() && getConnectionStatus() != com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
     {
         spdlog::info("All SecurityDefinitions emitted, going ONLINE.");
-        updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, book.time * 1000 * 1000);
+        updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, timestampNanos);
     }
 
     if (!m_shouldOutput)
@@ -140,23 +149,105 @@ void HyperliquidMessageProcessor::onL2BookLevel(const hyperliquid::L2BookUpdate&
         return;
     }
 
-    if (!m_writer.prepareMessage(m_mdUpdate))
+    // Emit MDFullBook snapshot
+    if (!m_writer.prepareMessage(m_mdFullBook))
     {
-        spdlog::error("Error preparing MDUpdate message");
+        spdlog::error("Error preparing MDFullBook message");
         return;
     }
 
-    m_mdUpdate.securityId(securityId);
-    m_mdUpdate.timestamp(book.time * 1000 * 1000); // Nanos
-    m_mdUpdate.updateType(com::liversedge::messages::MDUpdateType::BOOK_UPDATE);
-    m_mdUpdate.action(com::liversedge::messages::MDUpdateAction::Value::CHANGE);
-    m_mdUpdate.side(level.side == hyperliquid::Side::Bid ? com::liversedge::messages::MDSide::BID : com::liversedge::messages::MDSide::ASK);
-    SBEUtils::setPrice(m_mdUpdate.price(), level.px);
-    SBEUtils::setQty(m_mdUpdate.qty(), level.sz);
+    m_mdFullBook.securityId(securityId);
+    m_mdFullBook.timestamp(timestampNanos);
 
-    if (!m_writer.writeMessage(m_mdUpdate))
+    auto bidLevels = m_mdFullBook.bidLevelsCount(snapshot.numBids);
+    for (uint8_t i = 0; i < snapshot.numBids; i++)
     {
-        spdlog::error("Error writing MDUpdate message");
+        auto bidLevel = bidLevels.next();
+        SBEUtils::setPrice(bidLevel.price(), snapshot.bids[i].px);
+        SBEUtils::setQty(bidLevel.qty(), snapshot.bids[i].sz);
+    }
+
+    auto askLevels = m_mdFullBook.askLevelsCount(snapshot.numAsks);
+    for (uint8_t i = 0; i < snapshot.numAsks; i++)
+    {
+        auto askLevel = askLevels.next();
+        SBEUtils::setPrice(askLevel.price(), snapshot.asks[i].px);
+        SBEUtils::setQty(askLevel.qty(), snapshot.asks[i].sz);
+    }
+
+    if (!m_writer.writeMessage(m_mdFullBook))
+    {
+        spdlog::error("Error writing MDFullBook message");
+    }
+}
+
+void HyperliquidMessageProcessor::onBbo(const hyperliquid::BboUpdate& update)
+{
+    if (m_connectedTimeMs > 0 && update.time + STALE_THRESHOLD_MS < m_connectedTimeMs)
+    {
+        return;
+    }
+
+    int securityId = getSecurityId(update.coin);
+    if (securityId == -1)
+    {
+        return;
+    }
+
+    if (getSecurityStatus(securityId) != com::liversedge::messages::SecurityStatusEnum::Value::ONLINE)
+    {
+        return;
+    }
+
+    if (!m_shouldOutput)
+    {
+        return;
+    }
+
+    uint64_t timestampNanos = update.time * 1000 * 1000;
+
+    if (update.hasBid)
+    {
+        if (!m_writer.prepareMessage(m_mdUpdate))
+        {
+            spdlog::error("Error preparing MDUpdate message");
+            return;
+        }
+
+        m_mdUpdate.securityId(securityId);
+        m_mdUpdate.timestamp(timestampNanos);
+        m_mdUpdate.updateType(com::liversedge::messages::MDUpdateType::BOOK_UPDATE);
+        m_mdUpdate.action(com::liversedge::messages::MDUpdateAction::Value::CHANGE);
+        m_mdUpdate.side(com::liversedge::messages::MDSide::BID);
+        SBEUtils::setPrice(m_mdUpdate.price(), update.bid.px);
+        SBEUtils::setQty(m_mdUpdate.qty(), update.bid.sz);
+
+        if (!m_writer.writeMessage(m_mdUpdate))
+        {
+            spdlog::error("Error writing MDUpdate message");
+        }
+    }
+
+    if (update.hasAsk)
+    {
+        if (!m_writer.prepareMessage(m_mdUpdate))
+        {
+            spdlog::error("Error preparing MDUpdate message");
+            return;
+        }
+
+        m_mdUpdate.securityId(securityId);
+        m_mdUpdate.timestamp(timestampNanos);
+        m_mdUpdate.updateType(com::liversedge::messages::MDUpdateType::BOOK_UPDATE);
+        m_mdUpdate.action(com::liversedge::messages::MDUpdateAction::Value::CHANGE);
+        m_mdUpdate.side(com::liversedge::messages::MDSide::ASK);
+        SBEUtils::setPrice(m_mdUpdate.price(), update.ask.px);
+        SBEUtils::setQty(m_mdUpdate.qty(), update.ask.sz);
+
+        if (!m_writer.writeMessage(m_mdUpdate))
+        {
+            spdlog::error("Error writing MDUpdate message");
+        }
     }
 }
 

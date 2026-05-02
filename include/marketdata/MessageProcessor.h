@@ -27,7 +27,7 @@ struct ProcessorSecurityInfo
     com::liversedge::messages::SecurityStatusEnum::Value status;
 };
 
-// Caps levels to 5000 to ensure they fit in 128kb buffer
+// Caps levels to 50 to ensure they fit in 128kb buffer
 constexpr int MAX_LEVELS = 50;
 
 class MessageProcessor

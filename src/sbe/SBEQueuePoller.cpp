@@ -81,14 +81,17 @@ bool SBEQueuePoller::next()
     std::uint64_t timestamp = getCurrentTimestamp();
     std::size_t actualMessageLength;
 
-    // Dispatch based on template ID and calculate actual message length
+    // Dispatch based on template ID: compute actual message length, validate
+    // buffer has the complete message, then deliver to listener.
     switch (m_messageHeader.templateId()) {
         case com::liversedge::messages::ConnectionStatus::sbeTemplateId():
         {
             m_connectionStatusFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                          blockLength, m_messageHeader.version(), m_bufferLimit);
-            m_listener.onConnectionStatus(m_connectionStatusFlyweight, timestamp);
             actualMessageLength = m_connectionStatusFlyweight.encodedLength();
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("ConnectionStatus", actualMessageLength);
+            m_listener.onConnectionStatus(m_connectionStatusFlyweight, timestamp);
             break;
         }
 
@@ -96,8 +99,10 @@ bool SBEQueuePoller::next()
         {
             m_securityDefinitionFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                            blockLength, m_messageHeader.version(), m_bufferLimit);
-            m_listener.onSecurityDefinition(m_securityDefinitionFlyweight, timestamp);
             actualMessageLength = m_securityDefinitionFlyweight.encodedLength() + m_securityDefinitionFlyweight.symbol().length();
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("SecurityDefinition", actualMessageLength);
+            m_listener.onSecurityDefinition(m_securityDefinitionFlyweight, timestamp);
             break;
         }
 
@@ -105,8 +110,10 @@ bool SBEQueuePoller::next()
         {
             m_securityStatusFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                        blockLength, m_messageHeader.version(), m_bufferLimit);
-            m_listener.onSecurityStatus(m_securityStatusFlyweight, timestamp);
             actualMessageLength = m_securityStatusFlyweight.encodedLength();
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("SecurityStatus", actualMessageLength);
+            m_listener.onSecurityStatus(m_securityStatusFlyweight, timestamp);
             break;
         }
 
@@ -114,8 +121,10 @@ bool SBEQueuePoller::next()
         {
             m_mdUpdateFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                  blockLength, m_messageHeader.version(), m_bufferLimit);
-            m_listener.onMDUpdate(m_mdUpdateFlyweight, timestamp);
             actualMessageLength = m_mdUpdateFlyweight.encodedLength();
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("MDUpdate", actualMessageLength);
+            m_listener.onMDUpdate(m_mdUpdateFlyweight, timestamp);
             break;
         }
 
@@ -123,8 +132,14 @@ bool SBEQueuePoller::next()
         {
             m_mdFullBookFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                    blockLength, m_messageHeader.version(), m_bufferLimit);
+            try {
+                actualMessageLength = m_mdFullBookFlyweight.decodeLength();
+            } catch (const std::runtime_error&) {
+                return handleBufferTooSmall("MDFullBook", m_bufferLimit);
+            }
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("MDFullBook", actualMessageLength);
             m_listener.onMDFullBook(m_mdFullBookFlyweight, timestamp);
-            actualMessageLength = m_mdFullBookFlyweight.encodedLength();
             break;
         }
 
@@ -132,9 +147,11 @@ bool SBEQueuePoller::next()
         {
             m_newOrderFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                    blockLength, m_messageHeader.version(), m_bufferLimit);
-            m_listener.onNewOrder(m_newOrderFlyweight, timestamp);
             actualMessageLength = m_newOrderFlyweight.encodedLength()
                 + m_newOrderFlyweight.clientOrderId().length();
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("NewOrder", actualMessageLength);
+            m_listener.onNewOrder(m_newOrderFlyweight, timestamp);
             break;
         }
 
@@ -142,20 +159,29 @@ bool SBEQueuePoller::next()
         {
             m_cancelOrderFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                    blockLength, m_messageHeader.version(), m_bufferLimit);
-            m_listener.onCancelOrder(m_cancelOrderFlyweight, timestamp);
             actualMessageLength = m_cancelOrderFlyweight.encodedLength()
                 + m_cancelOrderFlyweight.origClientOrderId().length()
                 + m_cancelOrderFlyweight.clientOrderId().length();
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("CancelOrder", actualMessageLength);
+            m_listener.onCancelOrder(m_cancelOrderFlyweight, timestamp);
             break;
         }
 
         case com::liversedge::messages::AmendOrder::sbeTemplateId():
-        {
-            m_amendOrderFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
-                                   blockLength, m_messageHeader.version(), m_bufferLimit);
+            {
+                m_amendOrderFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
+                                       blockLength, m_messageHeader.version(), m_bufferLimit);
+            try {
+                actualMessageLength = m_amendOrderFlyweight.encodedLength()
+                    + m_amendOrderFlyweight.clientOrderId().length();
+            } catch (const std::runtime_error&)
+            {
+                return handleBufferTooSmall("AmendOrder", m_bufferLimit);
+            }
+            if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
+                return handleBufferTooSmall("AmendOrder", actualMessageLength);
             m_listener.onAmendOrder(m_amendOrderFlyweight, timestamp);
-            actualMessageLength = m_amendOrderFlyweight.encodedLength()
-                + m_amendOrderFlyweight.clientOrderId().length();
             break;
         }
 
@@ -251,4 +277,19 @@ std::uint64_t SBEQueuePoller::getCurrentTimestamp() const
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
     return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+}
+
+bool SBEQueuePoller::handleBufferTooSmall(const char* messageType, std::size_t actualMessageLength)
+{
+    if (m_filePosition != m_lastProcessedPosition) {
+        m_lastProcessedPosition = m_filePosition;
+        m_consecutiveFailedPolls = 1;
+    } else {
+        m_consecutiveFailedPolls++;
+    }
+    if (m_consecutiveFailedPolls >= FAILED_POLL_LOG_THRESHOLD) {
+        spdlog::error("[{}] Message length {} exceeds buffer limit {}: not parsing message (stuck for {} polls)",
+                      messageType, actualMessageLength, m_bufferLimit, m_consecutiveFailedPolls);
+    }
+    return false;
 }

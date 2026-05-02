@@ -29,14 +29,13 @@ void HyperliquidMDApplication::onMeta(const hyperliquid::MetaResponse& response)
     HyperliquidMDApplicationBase::onMeta(response);
 }
 
-void HyperliquidMDApplication::onL2BookLevel(const hyperliquid::L2BookUpdate& book, const hyperliquid::PriceLevel& level) {
-    m_processor.onL2BookLevel(book, level);
+void HyperliquidMDApplication::onL2Book(const hyperliquid::L2BookSnapshot& snapshot) {
+    m_processor.onL2Book(snapshot);
 }
 
-void onBbo(const hyperliquid::BboUpdate& update)
-{
-
-};
+void HyperliquidMDApplication::onBbo(const hyperliquid::BboUpdate& update) {
+    m_processor.onBbo(update);
+}
 
 void HyperliquidMDApplication::onTrade(const hyperliquid::Trade& trade) {
     m_processor.onTrade(trade);

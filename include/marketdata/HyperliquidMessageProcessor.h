@@ -12,7 +12,8 @@ public:
     void onConnected();
     void onDisconnected(bool hasError, const std::string& errMsg);
     void onMeta(const hyperliquid::MetaResponse& response);
-    void onL2BookLevel(const hyperliquid::L2BookUpdate& book, const hyperliquid::PriceLevel& level);
+    void onL2Book(const hyperliquid::L2BookSnapshot& snapshot);
+    void onBbo(const hyperliquid::BboUpdate& update);
     void onTrade(const hyperliquid::Trade& trade);
 
     void setDesiredCoins(const std::set<std::string>& desiredCoins);

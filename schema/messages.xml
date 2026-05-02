@@ -175,6 +175,7 @@
     </sbe:message>
 
     <sbe:message name="SecurityDefinition" id="101" description="Security Definition Message">
+        <field name="timestamp" id="13" type="uint64" description="Timestamp in nanoseconds."/>
         <field name="id" id="1" type="int32" description="Internal security identifier."/>
         <field name="baseCurrency" id="3" type="Currency" description="Currency used for pricing"/>
         <field name="quoteCurrency" id="4" type="Currency" description="Currency used for commission"/>
@@ -189,7 +190,6 @@
                description="Number of USD the contract represents."/>
         <field name="securityType" id="12" type="SecurityType"
                description="Type of instrument i.e spread or outright."/>
-        <field name="timestamp" id="13" type="uint64" description="Timestamp in nanoseconds."/>
         <field name="action" id="14" type="ActionEnum" description="Whether this security is being added or removed"/>
         <field name="minSize" id="15" type="Qty" description="Minimum size on order."/>
         <field name="minAmount" id="16" type="Qty" description="Minimum amount on order."/>
@@ -205,8 +205,8 @@
     </sbe:message>
 
     <sbe:message name="MDUpdate" id="103" description="Market Data Incremental Update">
-        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <field name="timestamp" id="2" type="uint64" description="Timestamp in nanoseconds."/>
+        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <field name="updateType" id="3" type="MDUpdateType" description="Type of market data update."/>
         <field name="side" id="4" type="MDSide" description="Side of the market."/>
         <field name="price" id="5" type="Price" description="Price level."/>
@@ -216,8 +216,8 @@
     </sbe:message>
 
     <sbe:message name="MDFullBook" id="104" description="Market Data Full Book Snapshot">
-        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <field name="timestamp" id="2" type="uint64" description="Timestamp in nanoseconds."/>
+        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <group name="bidLevels" id="3" dimensionType="GroupSizeEncoding" description="Bid levels">
             <field name="price" id="1" type="Price" description="Bid price."/>
             <field name="qty" id="2" type="Qty" description="Bid quantity."/>

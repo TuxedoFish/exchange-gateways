@@ -13,6 +13,7 @@
 class SBEBinaryWriter {
 private:
     std::ofstream file_;
+    std::ofstream indexFile_;
     std::string filename_;
     size_t messageCount_;
     std::vector<char> buffer_;
@@ -86,6 +87,10 @@ bool SBEBinaryWriter::writeMessage(T& message) {
             writeMutex_.unlock(); // Release lock on error
             return false;
         }
+
+        // Record message offset in index before writing
+        std::uint64_t offset = static_cast<std::uint64_t>(file_.tellp());
+        indexFile_.write(reinterpret_cast<const char*>(&offset), sizeof(offset));
 
         // Write to file
         file_.write(buffer_.data(), totalSize);

@@ -14,6 +14,12 @@
 #include "hyperliquid/rest/RestApiMessageParser.h"
 #include "hyperliquid/websocket/WebsocketMessageParser.h"
 #include "hyperliquid/websocket/WebsocketApi.h"
+#include "hyperliquid/types/RequestTypes.h"
+
+struct DesiredOutcome {
+    std::string underlying;
+    std::string period;
+};
 
 class HyperliquidMDApplicationBase : public hyperliquid::WebsocketApiListener,
                                      public hyperliquid::RestApiListener,
@@ -38,11 +44,15 @@ public:
 
     // hyperliquid::RestEndpointListener
     virtual void onMeta(const hyperliquid::MetaResponse& response) override;
+    virtual void onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response) override;
+
+    void refetchOutcomeMeta();
 
 protected:
     virtual void subscribeToMarket(const std::string& coin);
     const SimpleConfig& m_config;
     std::set<std::string> m_desiredCoins;
+    std::vector<DesiredOutcome> m_desiredOutcomes;
     std::vector<hyperliquid::AssetMeta> m_universe;
 
 private:

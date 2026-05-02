@@ -1,6 +1,7 @@
 #include "../../include/marketdata/HyperliquidMDApplicationBase.h"
 #include <spdlog/spdlog.h>
 #include <set>
+#include <algorithm>
 
 HyperliquidMDApplicationBase::~HyperliquidMDApplicationBase() = default;
 
@@ -11,6 +12,26 @@ void HyperliquidMDApplicationBase::start()
     while(std::getline(desiredCoinsCsv, coin, ','))
     {
         m_desiredCoins.insert(coin);
+    }
+
+    // Parse outcomes config: "BTC:1d,ETH:1d" -> vector of {underlying, period}
+    std::string outcomesCfg = m_config.getString("outcomes", "");
+    if (!outcomesCfg.empty())
+    {
+        std::stringstream outcomesCsv(outcomesCfg);
+        std::string entry;
+        while (std::getline(outcomesCsv, entry, ','))
+        {
+            auto colonPos = entry.find(':');
+            if (colonPos != std::string::npos)
+            {
+                m_desiredOutcomes.push_back({
+                    entry.substr(0, colonPos),
+                    entry.substr(colonPos + 1)
+                });
+            }
+        }
+        spdlog::info("Configured {} desired outcomes", m_desiredOutcomes.size());
     }
 
     m_apiConfig.env = getEnvironment(m_config.getString("environment"));
@@ -45,6 +66,10 @@ void HyperliquidMDApplicationBase::onMessage(const std::string& message) {
 void HyperliquidMDApplicationBase::onConnected() {
     m_infoApi->metaAsync();
     m_infoApi->metaAsync("xyz");
+    if (!m_desiredOutcomes.empty())
+    {
+        m_infoApi->outcomeMetaAsync();
+    }
 }
 
 void HyperliquidMDApplicationBase::onDisconnected(bool hasError, const std::string& errMsg) {
@@ -65,6 +90,45 @@ void HyperliquidMDApplicationBase::onMeta(const hyperliquid::MetaResponse& respo
         if (m_desiredCoins.find(coin.name) != m_desiredCoins.end())
         {
             subscribeToMarket(coin.name);
+        }
+    }
+}
+
+void HyperliquidMDApplicationBase::refetchOutcomeMeta()
+{
+    if (m_infoApi && !m_desiredOutcomes.empty())
+    {
+        m_infoApi->outcomeMetaAsync();
+    }
+}
+
+void HyperliquidMDApplicationBase::onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response)
+{
+    spdlog::info("Loaded {} outcomes", response.outcomes.size());
+
+    for (const auto& outcome : response.outcomes)
+    {
+        for (const auto& desired : m_desiredOutcomes)
+        {
+            if (outcome.description.underlying == desired.underlying &&
+                outcome.description.period == desired.period)
+            {
+                spdlog::info("Matched outcome: {} index={} class={} expiryEpochMs={} targetPrice={}",
+                             outcome.name, outcome.outcome,
+                             outcome.description.outcomeClass,
+                             std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 outcome.description.expiry.time_since_epoch()).count(),
+                             outcome.description.targetPrice);
+
+                for (int side = 0; side < static_cast<int>(outcome.sideSpecs.size()); side++)
+                {
+                    std::string coin = hyperliquid::outcomeCoin(outcome.outcome, side);
+                    spdlog::info("  Subscribing to side {} ({}) coin={}",
+                                 side, outcome.sideSpecs[side].name, coin);
+                    subscribeToMarket(coin);
+                }
+                break;
+            }
         }
     }
 }

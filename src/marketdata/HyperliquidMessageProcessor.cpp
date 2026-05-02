@@ -1,10 +1,12 @@
 #include "../../include/marketdata/HyperliquidMessageProcessor.h"
+#include "../../include/marketdata/HyperliquidMDApplicationBase.h"
 #include "../../include/sbe/SBEUtils.h"
 #include <spdlog/spdlog.h>
 #include <chrono>
 #include <cmath>
 #include <ctime>
 #include <iomanip>
+#include <algorithm>
 
 namespace
 {
@@ -53,6 +55,8 @@ void HyperliquidMessageProcessor::onDisconnected(bool hasError, const std::strin
 {
     m_observedCoins.clear();
     m_pendingSecDefs.clear();
+    m_pendingOutcomeSecDefs.clear();
+    m_activeOutcomes.clear();
     invalidateState(0);
 }
 
@@ -97,6 +101,182 @@ void HyperliquidMessageProcessor::onMeta(const hyperliquid::MetaResponse& respon
     }
 }
 
+void HyperliquidMessageProcessor::onOutcomeMeta(
+    const hyperliquid::OutcomeMetaResponse& response,
+    const std::vector<DesiredOutcome>& desiredOutcomes)
+{
+    for (const auto& outcome : response.outcomes)
+    {
+        for (const auto& desired : desiredOutcomes)
+        {
+            if (outcome.description.underlying != desired.underlying ||
+                outcome.description.period != desired.period)
+            {
+                continue;
+            }
+
+            for (int side = 0; side < static_cast<int>(outcome.sideSpecs.size()); side++)
+            {
+                std::string coin = hyperliquid::outcomeCoin(outcome.outcome, side);
+                std::string symbol = buildOutcomeSymbol(
+                    outcome.description.underlying,
+                    outcome.description.period,
+                    outcome.sideSpecs[side].name);
+
+                int id = createSecurity(coin);
+
+                OutcomeInstrument inst;
+                inst.symbol = symbol;
+                inst.coin = coin;
+                inst.outcomeIndex = outcome.outcome;
+                inst.side = side;
+                inst.expiry = outcome.description.expiry;
+                inst.securityId = id;
+
+                m_pendingOutcomeSecDefs[id] = inst;
+
+                if (!updateSecurityStatus(id, 0,
+                    com::liversedge::messages::SecurityStatusEnum::Value::PENDING_SNAPSHOT))
+                {
+                    spdlog::error("Error updating security status to PENDING_SNAPSHOT for {}", symbol);
+                }
+
+                spdlog::info("Registered outcome instrument {} coin={} expiryEpochMs={}",
+                             symbol, coin,
+                             std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 inst.expiry.time_since_epoch()).count());
+            }
+            break;
+        }
+    }
+}
+
+std::string HyperliquidMessageProcessor::buildOutcomeSymbol(
+    const std::string& underlying,
+    const std::string& period,
+    const std::string& sideName)
+{
+    std::string p = period;
+    std::transform(p.begin(), p.end(), p.begin(), ::toupper);
+    std::string s = sideName;
+    std::transform(s.begin(), s.end(), s.begin(), ::toupper);
+    return underlying + "-" + p + "-" + s;
+}
+
+void HyperliquidMessageProcessor::emitOutcomeSecurityDefinition(const OutcomeInstrument& outcome)
+{
+    if (!m_shouldOutput) return;
+
+    if (!m_writer.prepareMessage(m_securityDefinition))
+    {
+        spdlog::error("Error preparing security definition for {}", outcome.symbol);
+        removeSecurity(outcome.securityId);
+        return;
+    }
+
+    m_securityDefinition.id(outcome.securityId);
+    m_securityDefinition.timestamp(0);
+    m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
+    m_securityDefinition.baseCurrency(com::liversedge::messages::Currency::CONTRACT);
+    m_securityDefinition.quoteCurrency(com::liversedge::messages::Currency::USDH);
+    m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDH);
+    m_securityDefinition.positionCurrency(com::liversedge::messages::Currency::CONTRACT);
+    m_securityDefinition.securityType(com::liversedge::messages::SecurityType::PREDICTION_MARKET);
+    m_securityDefinition.marginingType(com::liversedge::messages::MarginingType::LINEAR);
+    m_securityDefinition.contractMultiplier().mantissa(SBEUtils::stringToMantissa("1", -8));
+
+    // Derive settlType from period
+    m_securityDefinition.settlType(com::liversedge::messages::SettlType::D1);
+
+    // Convert time_point expiry to maturityDate
+    {
+        time_t secs = std::chrono::system_clock::to_time_t(outcome.expiry);
+        struct tm tm;
+        gmtime_r(&secs, &tm);
+        m_securityDefinition.maturityDate()
+            .year(tm.tm_year + 1900)
+            .month(tm.tm_mon + 1)
+            .day(tm.tm_mday);
+    }
+
+    // Fixed 5 decimal precision for outcome prices (0-1 range)
+    m_securityDefinition.instrumentPricePrecision(5);
+    m_securityDefinition.minPriceIncrement().mantissa(SBEUtils::powerOfTenMantissa(5, -8));
+    m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(0, -8));
+    SBEUtils::setQty(m_securityDefinition.minSize(), "0");
+    SBEUtils::setQty(m_securityDefinition.minAmount(), "10");
+    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), outcome.symbol);
+
+    if (!m_writer.writeMessage(m_securityDefinition))
+    {
+        spdlog::error("Error writing security definition for {}", outcome.symbol);
+        removeSecurity(outcome.securityId);
+        return;
+    }
+
+    spdlog::info("SecurityDefinition {} type=PREDICTION_MARKET maturity={:04d}-{:02d}-{:02d}",
+                 outcome.symbol,
+                 static_cast<int>(m_securityDefinition.maturityDate().year()),
+                 static_cast<int>(m_securityDefinition.maturityDate().month()),
+                 static_cast<int>(m_securityDefinition.maturityDate().day()));
+
+    m_activeOutcomes.push_back(outcome);
+}
+
+bool HyperliquidMessageProcessor::hasExpiredOutcomes() const
+{
+    if (m_activeOutcomes.empty()) return false;
+
+    auto now = std::chrono::system_clock::now();
+    for (const auto& outcome : m_activeOutcomes)
+    {
+        if (now >= outcome.expiry)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void HyperliquidMessageProcessor::removeExpiredOutcomes()
+{
+    auto now = std::chrono::system_clock::now();
+    uint64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    uint64_t timestampNanos = nowMs * 1000 * 1000;
+
+    auto it = m_activeOutcomes.begin();
+    while (it != m_activeOutcomes.end())
+    {
+        if (now >= it->expiry)
+        {
+            spdlog::info("Outcome {} expired, removing SecurityDefinition", it->symbol);
+
+            if (m_shouldOutput)
+            {
+                if (m_writer.prepareMessage(m_securityDefinition))
+                {
+                    m_securityDefinition.id(it->securityId);
+                    m_securityDefinition.timestamp(timestampNanos);
+                    m_securityDefinition.action(com::liversedge::messages::ActionEnum::REMOVE);
+                    // Must still set var-length field for valid SBE
+                    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), it->symbol);
+                    m_writer.writeMessage(m_securityDefinition);
+                }
+            }
+
+            updateSecurityStatus(it->securityId, timestampNanos,
+                com::liversedge::messages::SecurityStatusEnum::Value::OFFLINE);
+            removeSecurity(it->securityId);
+
+            it = m_activeOutcomes.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
 void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& snapshot)
 {
     if (m_connectedTimeMs > 0 && snapshot.time + STALE_THRESHOLD_MS < m_connectedTimeMs)
@@ -133,12 +313,21 @@ void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& sn
         m_pendingSecDefs.erase(pendingIt);
     }
 
+    // Emit deferred outcome SecurityDefinition on first price update
+    auto pendingOutcomeIt = m_pendingOutcomeSecDefs.find(securityId);
+    if (pendingOutcomeIt != m_pendingOutcomeSecDefs.end())
+    {
+        emitOutcomeSecurityDefinition(pendingOutcomeIt->second);
+        m_pendingOutcomeSecDefs.erase(pendingOutcomeIt);
+    }
+
     if (!m_pendingSecDefs.empty())
     {
         drainTimedOutSecDefs(snapshot.time);
     }
 
-    if (m_pendingSecDefs.empty() && getConnectionStatus() != com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
+    if (m_pendingSecDefs.empty() && m_pendingOutcomeSecDefs.empty() &&
+        getConnectionStatus() != com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
     {
         spdlog::info("All SecurityDefinitions emitted, going ONLINE.");
         updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, timestampNanos);

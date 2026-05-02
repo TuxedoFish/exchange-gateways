@@ -15,6 +15,7 @@ public:
     void onL2Book(const hyperliquid::L2BookSnapshot& snapshot) override;
     void onBbo(const hyperliquid::BboUpdate& update) override;
     void onMeta(const hyperliquid::MetaResponse& response) override;
+    void onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response) override;
     void onTrade(const hyperliquid::Trade& trade) override;
 
 private:

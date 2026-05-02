@@ -29,7 +29,20 @@ void HyperliquidMDApplication::onMeta(const hyperliquid::MetaResponse& response)
     HyperliquidMDApplicationBase::onMeta(response);
 }
 
+void HyperliquidMDApplication::onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response) {
+    m_processor.onOutcomeMeta(response, m_desiredOutcomes);
+    HyperliquidMDApplicationBase::onOutcomeMeta(response);
+}
+
 void HyperliquidMDApplication::onL2Book(const hyperliquid::L2BookSnapshot& snapshot) {
+    // Check for expired outcomes and trigger re-fetch
+    if (m_processor.hasExpiredOutcomes())
+    {
+        spdlog::info("Detected expired outcomes, removing and re-fetching outcomeMeta");
+        m_processor.removeExpiredOutcomes();
+        HyperliquidMDApplicationBase::refetchOutcomeMeta();
+    }
+
     m_processor.onL2Book(snapshot);
 }
 

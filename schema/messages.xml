@@ -64,6 +64,7 @@
             <validValue name="FUT" description="future">0</validValue>
             <validValue name="FUTCO" description="future combination">1</validValue>
             <validValue name="FXSPOT" description="spot">2</validValue>
+            <validValue name="PREDICTION_MARKET" description="prediction market">3</validValue>
         </enum>
 
         <enum name="ActionEnum" encodingType="uint8">
@@ -89,6 +90,7 @@
             <validValue name="ETH" description="ethereum">2</validValue>
             <validValue name="USDC" description="us dollar coin">3</validValue>
             <validValue name="CONTRACT" description="contracts">4</validValue>
+            <validValue name="USDH" description="usdh">5</validValue>
         </enum>
 
         <enum name="MarginingType" encodingType="uint8">

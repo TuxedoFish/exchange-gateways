@@ -47,7 +47,7 @@ void DeribitGWApplication::fromAdmin(const FIX::Message& message, const FIX::Ses
 }
 
 void DeribitGWApplication::fromApp(const FIX::Message& message, const FIX::SessionID& sessionID) noexcept
-{    
+{
     // This automatically calls down to the corresponding onMessage implementation
     crack(message, sessionID);
 }
@@ -69,6 +69,16 @@ void DeribitGWApplication::onMessage(const FIX44::ExecutionReport& message, cons
     FixUtils::logFixMessage("Received ExecutionReport: ", message);
 
     com::liversedge::messages::ExecutionReport sbeExecReport;
+    if (message.isSetField(FIX::FIELD::ExecType))
+    {
+        FIX::ExecType execType;
+        message.get(execType);
+        if (execType == FIX::ExecType_CANCELED)
+        {
+            // The second execution report doesn't contain all the information we need
+            return;
+        }
+    }
     if (m_sbeWriter.prepareMessage(sbeExecReport))
     {
         DeribitMessageConverter::convertExecutionReport(message, sbeExecReport, m_refDataHolder);

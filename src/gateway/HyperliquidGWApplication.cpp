@@ -68,6 +68,23 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
                  update.coin, update.side, hyperliquid::toString(update.status),
                  update.oid, update.sz, update.limitPx, update.cloid);
 
+    // Register oid->cloid mapping for fill correlation
+    if (m_ordersHandler) {
+        m_ordersHandler->registerOid(update.oid, update.cloid);
+    }
+
+    // On Open, update active oid and forward
+    // On other statuses, only forward if oid matches active (skip stale cancels from amends)
+    if (update.status == hyperliquid::OrderStatus::Open) {
+        if (m_ordersHandler) {
+            m_ordersHandler->setActiveOid(update.oid, update.cloid);
+        }
+    } else if (m_ordersHandler && !m_ordersHandler->isActiveOid(update.oid, update.cloid)) {
+        spdlog::info("Skipping stale order update oid={} cloid={} status={} (not active oid)",
+                     update.oid, update.cloid, hyperliquid::toString(update.status));
+        return;
+    }
+
     com::liversedge::messages::ExecutionReport sbeExecReport;
     if (!m_sbeWriter.prepareMessage(sbeExecReport))
     {
@@ -95,10 +112,8 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     double cumQty = update.origSz - update.sz;
     SBEUtils::setQty(sbeExecReport.cumQty(), std::to_string(cumQty));
 
-    // Register oid->cloid mapping and resolve internal clientOrderId
     std::string clientOrderId;
     if (m_ordersHandler) {
-        m_ordersHandler->registerOid(update.oid, update.cloid);
         clientOrderId = m_ordersHandler->lookupClientOrderId(update.cloid);
     }
 
@@ -187,11 +202,17 @@ void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderRespons
         else if (s.resting)
         {
             spdlog::info("PlaceOrder resting oid={}", s.resting->oid);
+            if (m_ordersHandler) {
+                m_ordersHandler->setActiveOid(s.resting->oid, pending.cloid);
+            }
         }
         else if (s.filled)
         {
             spdlog::info("PlaceOrder filled oid={} avgPx={} totalSz={}",
                          s.filled->oid, s.filled->avgPx, s.filled->totalSz);
+            if (m_ordersHandler) {
+                m_ordersHandler->setActiveOid(s.filled->oid, pending.cloid);
+            }
         }
     }
 }

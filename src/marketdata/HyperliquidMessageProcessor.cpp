@@ -128,6 +128,7 @@ void HyperliquidMessageProcessor::onOutcomeMeta(
                 OutcomeInstrument inst;
                 inst.symbol = symbol;
                 inst.coin = coin;
+                inst.underlying = outcome.description.underlying;
                 inst.outcomeIndex = outcome.outcome;
                 inst.side = side;
                 inst.expiry = outcome.description.expiry;
@@ -177,7 +178,7 @@ void HyperliquidMessageProcessor::emitOutcomeSecurityDefinition(const OutcomeIns
     m_securityDefinition.id(outcome.securityId);
     m_securityDefinition.timestamp(0);
     m_securityDefinition.action(com::liversedge::messages::ActionEnum::ADD);
-    m_securityDefinition.baseCurrency(com::liversedge::messages::Currency::CONTRACT);
+    m_securityDefinition.baseCurrency(SBEUtils::currencyFromString(outcome.underlying));
     m_securityDefinition.quoteCurrency(com::liversedge::messages::Currency::USDH);
     m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDH);
     m_securityDefinition.positionCurrency(com::liversedge::messages::Currency::CONTRACT);
@@ -188,7 +189,7 @@ void HyperliquidMessageProcessor::emitOutcomeSecurityDefinition(const OutcomeIns
     // Derive settlType from period
     m_securityDefinition.settlType(com::liversedge::messages::SettlType::D1);
 
-    // Convert time_point expiry to maturityDate
+    // Convert time_point expiry to maturityDate + maturityTime
     {
         time_t secs = std::chrono::system_clock::to_time_t(outcome.expiry);
         struct tm tm;
@@ -197,6 +198,9 @@ void HyperliquidMessageProcessor::emitOutcomeSecurityDefinition(const OutcomeIns
             .year(tm.tm_year + 1900)
             .month(tm.tm_mon + 1)
             .day(tm.tm_mday);
+        m_securityDefinition.maturityTime()
+            .hour(tm.tm_hour)
+            .minute(tm.tm_min);
     }
 
     // Fixed 5 decimal precision for outcome prices (0-1 range)
@@ -521,6 +525,7 @@ void HyperliquidMessageProcessor::emitSecurityDefinitionWithPricePrecision(const
     m_securityDefinition.contractMultiplier().mantissa(SBEUtils::stringToMantissa("1", -8));
     m_securityDefinition.settlType(com::liversedge::messages::SettlType::REGULAR);
     m_securityDefinition.maturityDate().year(3000).month(1).day(1);
+    m_securityDefinition.maturityTime().hour(0).minute(0);
     m_securityDefinition.instrumentPricePrecision(instrumentPricePrecision);
     m_securityDefinition.minPriceIncrement().mantissa(SBEUtils::powerOfTenMantissa(instrumentPricePrecision, -8));
     m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(asset.szDecimals, -8));

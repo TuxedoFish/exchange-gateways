@@ -45,7 +45,7 @@ int AppRunner::runGateway()
 
     // Create SBE writer
     SBEBinaryWriter sbeWriter;
-    sbeWriter.openNewFile(config_.getString("gw_outbound_file_path") + kPathSeparator + "messages.sbe", true);
+    sbeWriter.openNewFile(config_.getString("gw_outbound_file_path") + kPathSeparator + "messages.sbe");
 
     std::string exchangeName = config_.getString("exchange_name", "UNSET");
 

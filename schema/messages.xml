@@ -42,6 +42,11 @@
             <type name="day" primitiveType="uint8"/>
         </composite>
 
+        <composite name="Time" description="Time of day as HH:MM.">
+            <type name="hour" primitiveType="uint8"/>
+            <type name="minute" primitiveType="uint8"/>
+        </composite>
+
         <composite name="Qty">
             <type name="mantissa" primitiveType="int64" description="Mantissa of Decimal number"/>
             <type name="exponent" primitiveType="int8" presence="constant" description="Exponent of Decimal number">-8</type>
@@ -184,6 +189,7 @@
         <field name="settlCurrency" id="5" type="Currency" description="Currency of settlement denomination."/>
         <field name="settlType" id="6" type="SettlType" description="Settlement period."/>
         <field name="maturityDate" id="7" type="Date" description="Date of maturity."/>
+        <field name="maturityTime" id="19" type="Time" description="Time of maturity (UTC)."/>
         <field name="minPriceIncrement" id="8" type="Price" description="Minimum price increment."/>
         <field name="instrumentPricePrecision" id="9" type="int8"
                description="Number of Decimal places for instrument prices."/>

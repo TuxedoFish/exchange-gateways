@@ -219,6 +219,21 @@ void HyperliquidOrdersHandler::registerOid(uint64_t oid, const std::string& cloi
     m_oidToCloid[oid] = cloid;
 }
 
+void HyperliquidOrdersHandler::setActiveOid(uint64_t oid, const std::string& cloid)
+{
+    m_cloidToOid[cloid] = oid;
+    m_oidToCloid[oid] = cloid;
+}
+
+bool HyperliquidOrdersHandler::isActiveOid(uint64_t oid, const std::string& cloid) const
+{
+    auto it = m_cloidToOid.find(cloid);
+    if (it == m_cloidToOid.end()) {
+        return true; // no entry yet, treat as active (defensive)
+    }
+    return it->second == oid;
+}
+
 void HyperliquidOrdersHandler::removeOrder(const std::string& cloid)
 {
     auto clientIt = m_cloidToClient.find(cloid);
@@ -226,6 +241,8 @@ void HyperliquidOrdersHandler::removeOrder(const std::string& cloid)
         m_clientToCloid.erase(clientIt->second);
         m_cloidToClient.erase(clientIt);
     }
+
+    m_cloidToOid.erase(cloid);
 
     // Remove oid entries pointing to this cloid
     for (auto it = m_oidToCloid.begin(); it != m_oidToCloid.end(); ) {

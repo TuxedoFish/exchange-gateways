@@ -305,6 +305,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
             m_securityDefinition.instrumentPricePrecision(std::stoi(security.getField(FIX::FIELD::InstrumentPricePrecision)));
             m_securityDefinition.settlType(SBEUtils::settlTypeFromString(security.getField(FIX::FIELD::SettlType)));
             SBEUtils::setDate(m_securityDefinition.maturityDate(), security.getField(FIX::FIELD::MaturityDate));
+            m_securityDefinition.maturityTime().hour(8).minute(0);
             SBEUtils::setPrice(m_securityDefinition.minPriceIncrement(), security.getField(FIX::FIELD::MinPriceIncrement));
             // Min size is 1 contract
             m_securityDefinition.securityType(securityType);

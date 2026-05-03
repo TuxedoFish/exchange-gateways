@@ -37,6 +37,7 @@ private:
     struct OutcomeInstrument {
         std::string symbol;       // "BTC-1D-YES"
         std::string coin;         // "#1230"
+        std::string underlying;   // "BTC"
         int outcomeIndex;
         int side;
         std::chrono::system_clock::time_point expiry;

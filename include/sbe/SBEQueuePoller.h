@@ -56,9 +56,13 @@ private:
 
     // File I/O
     std::unique_ptr<boost::iostreams::mapped_file_source> m_mappedFile;
+    std::unique_ptr<boost::iostreams::mapped_file_source> m_indexMappedFile;
     const char* m_fileData = nullptr;
+    const char* m_indexData = nullptr;
     std::size_t m_filePosition = 0;
     std::size_t m_fileSize = 0;
+    std::size_t m_committedEnd = 0;  // Safe-to-read boundary from index
+    std::size_t m_indexFileSize = 0;
     boost::filesystem::path m_currentFilePath;
 
     // Buffer for reading
@@ -80,6 +84,7 @@ private:
     bool fillBuffer();
     bool initializeFileMapping();
     void closeResources();
+    void refreshCommittedEnd();
     std::uint64_t getCurrentTimestamp() const;
     bool handleBufferTooSmall(const char* messageType, std::size_t actualMessageLength);
 

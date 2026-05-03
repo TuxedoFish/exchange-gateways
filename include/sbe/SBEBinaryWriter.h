@@ -88,10 +88,6 @@ bool SBEBinaryWriter::writeMessage(T& message) {
             return false;
         }
 
-        // Record message offset in index before writing
-        std::uint64_t offset = static_cast<std::uint64_t>(file_.tellp());
-        indexFile_.write(reinterpret_cast<const char*>(&offset), sizeof(offset));
-
         // Write to file
         file_.write(buffer_.data(), totalSize);
         if (!file_.good()) {
@@ -100,8 +96,14 @@ bool SBEBinaryWriter::writeMessage(T& message) {
             return false;
         }
 
-        // Flush to disk while lock is held
-        flush();
+        // Flush data to disk first
+        file_.flush();
+
+        // Write end offset to index so consumers know all data up to
+        // this point is safely committed, then flush the index
+        std::uint64_t endOffset = static_cast<std::uint64_t>(file_.tellp());
+        indexFile_.write(reinterpret_cast<const char*>(&endOffset), sizeof(endOffset));
+        indexFile_.flush();
 
         messageCount_++;
         writeMutex_.unlock(); // Release lock on success

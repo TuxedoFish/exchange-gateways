@@ -23,6 +23,10 @@ SecurityInfo::SecurityInfo(const com::liversedge::messages::SecurityDefinition& 
     m_maturityDate.tm_mon = maturityDate.month() - 1;     // tm_mon is 0-11
     m_maturityDate.tm_mday = maturityDate.day();
 
+    auto maturityTime = const_cast<com::liversedge::messages::SecurityDefinition&>(secDef).maturityTime();
+    m_maturityDate.tm_hour = maturityTime.hour();
+    m_maturityDate.tm_min = maturityTime.minute();
+
     // Convert Price and Qty fields using SBEUtils
     auto minPriceIncrementField = const_cast<com::liversedge::messages::SecurityDefinition&>(secDef).minPriceIncrement();
     m_minPriceIncrement = SBEUtils::convertPrice(minPriceIncrementField);
@@ -54,7 +58,8 @@ std::string SecurityInfo::toString() const
     oss << ", settlType=" << static_cast<int>(m_settlType);
     oss << ", marginingType=" << static_cast<int>(m_marginingType);
     oss << ", maturityDate=" << (m_maturityDate.tm_year + 1900) << "-"
-        << (m_maturityDate.tm_mon + 1) << "-" << m_maturityDate.tm_mday;
+        << (m_maturityDate.tm_mon + 1) << "-" << m_maturityDate.tm_mday
+        << "T" << m_maturityDate.tm_hour << ":" << m_maturityDate.tm_min;
     oss << ", minPriceIncrement=" << m_minPriceIncrement;
     oss << ", instrumentPricePrecision=" << static_cast<int>(m_instrumentPricePrecision);
     oss << ", minSizeIncrement=" << m_minSizeIncrement;

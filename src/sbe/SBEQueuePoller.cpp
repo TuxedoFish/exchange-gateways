@@ -198,35 +198,84 @@ bool SBEQueuePoller::next()
     return true;
 }
 
-bool SBEQueuePoller::fillBuffer()
+void SBEQueuePoller::refreshCommittedEnd()
 {
-    // In live mode, refresh file size to detect new data
     if (m_isLiveMode) {
-        // Check if file has grown by getting current file size
-        boost::filesystem::path filePath(m_dataDirectory + "/messages.sbe");
-        if (boost::filesystem::exists(filePath)) {
-            std::size_t currentFileSize = boost::filesystem::file_size(filePath);
-            if (currentFileSize > m_fileSize) {
-                // File has grown, remap it
-                m_mappedFile.reset();
-                m_mappedFile = std::make_unique<boost::iostreams::mapped_file_source>(filePath.string());
-                m_fileData = m_mappedFile->data();
-                m_fileSize = m_mappedFile->size();
+        // Remap index file to pick up new entries
+        std::string indexPath = m_currentFilePath.string() + ".idx";
+        if (boost::filesystem::exists(indexPath)) {
+            std::size_t currentIndexSize = boost::filesystem::file_size(indexPath);
+            if (currentIndexSize < m_indexFileSize) {
+                // Index file shrunk — file was truncated (producer restarted)
+                m_indexMappedFile.reset();
+                m_indexData = nullptr;
+                m_indexFileSize = 0;
+                m_committedEnd = 0;
+                return;
+            }
+            if (currentIndexSize > m_indexFileSize) {
+                m_indexMappedFile.reset();
+                m_indexMappedFile = std::make_unique<boost::iostreams::mapped_file_source>(indexPath);
+                if (m_indexMappedFile->is_open()) {
+                    m_indexData = m_indexMappedFile->data();
+                    m_indexFileSize = m_indexMappedFile->size();
+                }
             }
         }
     }
 
-    if (m_filePosition >= m_fileSize) {
-        if (m_isLiveMode) {
-            // In live mode, no data available yet but don't give up
-            return false;
-        } else {
-            return false; // End of file in non-live mode
+    // Read the last uint64 entry in the index as the committed end offset
+    if (m_indexData && m_indexFileSize >= sizeof(std::uint64_t)) {
+        std::size_t lastEntryOffset = m_indexFileSize - sizeof(std::uint64_t);
+        std::uint64_t endOffset;
+        std::memcpy(&endOffset, m_indexData + lastEntryOffset, sizeof(endOffset));
+        m_committedEnd = static_cast<std::size_t>(endOffset);
+    }
+}
+
+bool SBEQueuePoller::fillBuffer()
+{
+    // In live mode, refresh from index to detect new committed data
+    if (m_isLiveMode) {
+        refreshCommittedEnd();
+
+        // Detect file truncation (producer restarted)
+        if (m_committedEnd < m_filePosition) {
+            spdlog::warn("File truncation detected (committedEnd={} < filePosition={}), resetting poller",
+                         m_committedEnd, m_filePosition);
+
+            m_mappedFile.reset();
+            m_fileData = nullptr;
+            m_fileSize = 0;
+            m_filePosition = 0;
+            m_bufferLimit = 0;
+
+            // Re-initialize if file exists with data
+            if (boost::filesystem::exists(m_currentFilePath)
+                && boost::filesystem::file_size(m_currentFilePath) > 0) {
+                initializeFileMapping();
+            }
+
+            if (m_committedEnd == 0 || m_filePosition >= m_committedEnd) {
+                return false;
+            }
+        }
+
+        // Remap data file if it has grown past our mapping
+        if (m_committedEnd > m_fileSize) {
+            m_mappedFile.reset();
+            m_mappedFile = std::make_unique<boost::iostreams::mapped_file_source>(m_currentFilePath.string());
+            m_fileData = m_mappedFile->data();
+            m_fileSize = m_mappedFile->size();
         }
     }
 
-    // Calculate how much data we can read
-    std::size_t remainingBytes = m_fileSize - m_filePosition;
+    if (m_filePosition >= m_committedEnd) {
+        return false;
+    }
+
+    // Only read up to the committed end boundary
+    std::size_t remainingBytes = m_committedEnd - m_filePosition;
     std::size_t bytesToRead = std::min(remainingBytes, m_buffer.size());
 
     // Copy data from memory-mapped file to buffer
@@ -248,6 +297,12 @@ void SBEQueuePoller::closeResources()
         m_mappedFile.reset();
         m_fileData = nullptr;
     }
+    if (m_indexMappedFile) {
+        m_indexMappedFile.reset();
+        m_indexData = nullptr;
+        m_indexFileSize = 0;
+    }
+    m_committedEnd = 0;
 }
 
 bool SBEQueuePoller::initializeFileMapping()
@@ -263,6 +318,23 @@ bool SBEQueuePoller::initializeFileMapping()
         m_fileSize = m_mappedFile->size();
         m_filePosition = 0;
         m_bufferLimit = 0;
+
+        // Map the index file
+        std::string indexPath = m_currentFilePath.string() + ".idx";
+        if (boost::filesystem::exists(indexPath) && boost::filesystem::file_size(indexPath) > 0) {
+            m_indexMappedFile = std::make_unique<boost::iostreams::mapped_file_source>(indexPath);
+            if (m_indexMappedFile->is_open()) {
+                m_indexData = m_indexMappedFile->data();
+                m_indexFileSize = m_indexMappedFile->size();
+                refreshCommittedEnd();
+            }
+        }
+
+        // In non-live mode without index, treat entire file as committed
+        if (!m_isLiveMode && m_committedEnd == 0) {
+            m_committedEnd = m_fileSize;
+        }
+
         return true;
 
     } catch (const std::exception& e) {

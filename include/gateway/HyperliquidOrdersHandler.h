@@ -38,6 +38,8 @@ public:
     std::string lookupClientOrderId(const std::string& cloid) const;
     std::string lookupClientOrderIdByOid(uint64_t oid) const;
     void registerOid(uint64_t oid, const std::string& cloid);
+    void setActiveOid(uint64_t oid, const std::string& cloid);
+    bool isActiveOid(uint64_t oid, const std::string& cloid) const;
     void removeOrder(const std::string& cloid);
 
 private:
@@ -56,4 +58,6 @@ private:
     std::unordered_map<std::string, std::string> m_cloidToClient;
     // Exchange oid -> Hyperliquid cloid (for fill correlation)
     std::unordered_map<uint64_t, std::string> m_oidToCloid;
+    // Cloid -> active oid (tracks current oid after amends)
+    std::unordered_map<std::string, uint64_t> m_cloidToOid;
 };

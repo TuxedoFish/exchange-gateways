@@ -22,6 +22,8 @@ public:
 
     std::int32_t getId() const { return m_id; }
     std::string getSymbol() const { return m_symbol; }
+    std::string getMarketSymbol() const { return m_marketSymbol; }
+    com::liversedge::messages::SecurityType::Value getSecurityType() const { return m_securityType; }
     com::liversedge::messages::Currency::Value getCurrency() const { return m_baseCurrency; }
     com::liversedge::messages::Currency::Value getCommCurrency() const { return m_quoteCurrency; }
     com::liversedge::messages::Currency::Value getSettlCurrency() const { return m_settlCurrency; }
@@ -37,6 +39,7 @@ public:
 private:
     std::int32_t m_id = 0;
     std::string m_symbol;
+    std::string m_marketSymbol;
     com::liversedge::messages::Currency::Value m_baseCurrency = com::liversedge::messages::Currency::NULL_VALUE;
     com::liversedge::messages::Currency::Value m_quoteCurrency = com::liversedge::messages::Currency::NULL_VALUE;
     com::liversedge::messages::Currency::Value m_settlCurrency = com::liversedge::messages::Currency::NULL_VALUE;

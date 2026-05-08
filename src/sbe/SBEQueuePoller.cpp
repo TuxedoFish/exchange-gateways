@@ -99,7 +99,9 @@ bool SBEQueuePoller::next()
         {
             m_securityDefinitionFlyweight.wrapForDecode(m_buffer.data(), messageDataOffset,
                                            blockLength, m_messageHeader.version(), m_bufferLimit);
-            actualMessageLength = m_securityDefinitionFlyweight.encodedLength() + m_securityDefinitionFlyweight.symbol().length();
+            actualMessageLength = m_securityDefinitionFlyweight.encodedLength()
+                + m_securityDefinitionFlyweight.symbol().length()
+                + m_securityDefinitionFlyweight.marketSymbol().length();
             if (actualMessageLength > INITIAL_BUFFER_SIZE || m_bufferLimit < messageHeaderLength + actualMessageLength)
                 return handleBufferTooSmall("SecurityDefinition", actualMessageLength);
             m_listener.onSecurityDefinition(m_securityDefinitionFlyweight, timestamp);

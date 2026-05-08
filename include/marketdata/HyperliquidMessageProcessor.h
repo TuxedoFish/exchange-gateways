@@ -23,9 +23,9 @@ public:
 
     void setDesiredCoins(const std::set<std::string>& desiredCoins);
 
-    // Re-fetch outcomes after expiry - call from application layer
     bool hasExpiredOutcomes() const;
     void removeExpiredOutcomes();
+    bool shouldRefetchOutcomeMeta() const;
 
 private:
     struct PendingAsset {
@@ -60,4 +60,6 @@ private:
     std::vector<OutcomeInstrument> m_activeOutcomes;
     uint64_t m_connectedTimeMs{0};
     uint64_t m_metaReceivedTimeMs{0};
+    std::chrono::system_clock::time_point m_lastOutcomeExpiry{};
+    bool m_pendingRefetch{false};
 };

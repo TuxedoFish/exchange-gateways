@@ -314,6 +314,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
 
             // Variable length fields
             SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), security.getField(FIX::FIELD::Symbol));
+            SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.marketSymbol(), security.getField(FIX::FIELD::Symbol));
 
             // Write out security definition
             if (!m_writer.writeMessage(m_securityDefinition))

@@ -44,12 +44,16 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         }
 
         hyperliquid::OrderRequest order;
-        order.asset = secInfo->getSymbol();
+        if (secInfo->getSecurityType() == com::liversedge::messages::SecurityType::PREDICTION_MARKET) {
+            order.assetId = 100000000 + std::stoi(secInfo->getMarketSymbol().substr(1));
+        } else {
+            order.asset = secInfo->getSymbol();
+        }
         order.isBuy = (side == com::liversedge::messages::Side::BUY);
         order.price = std::stod(price.str(8, std::ios_base::fixed));
         order.size = std::stod(quantity.str(8, std::ios_base::fixed));
         order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{mapTimeInForce(timeInForce)};
+        order.limit = hyperliquid::LimitOrderType{hyperliquid::Tif::Alo};
         std::string cloid = hyperliquid::generateCloid();
         m_clientToCloid[clientOrderId] = cloid;
         m_cloidToClient[cloid] = clientOrderId;
@@ -103,12 +107,16 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         const std::string& cloid = it->second;
 
         hyperliquid::OrderRequest order;
-        order.asset = secInfo->getSymbol();
+        if (secInfo->getSecurityType() == com::liversedge::messages::SecurityType::PREDICTION_MARKET) {
+            order.assetId = 100000000 + std::stoi(secInfo->getMarketSymbol().substr(1));
+        } else {
+            order.asset = secInfo->getSymbol();
+        }
         order.isBuy = (side == com::liversedge::messages::Side::BUY);
         order.price = price.convert_to<double>();
         order.size = quantity.convert_to<double>();
         order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{mapTimeInForce(timeInForce)};
+        order.limit = hyperliquid::LimitOrderType{hyperliquid::Tif::Alo};
         order.cloid = cloid;
 
         hyperliquid::ModifyRequest modify;
@@ -161,7 +169,11 @@ void HyperliquidOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOr
         const std::string& cloid = it->second;
 
         hyperliquid::CancelByCloidRequest cancel;
-        cancel.asset = secInfo->getSymbol();
+        if (secInfo->getSecurityType() == com::liversedge::messages::SecurityType::PREDICTION_MARKET) {
+            cancel.assetId = 100000000 + std::stoi(secInfo->getMarketSymbol().substr(1));
+        } else {
+            cancel.asset = secInfo->getSymbol();
+        }
         cancel.cloid = cloid;
 
         m_gwApplication.trackPendingCancel(cloid, securityId);

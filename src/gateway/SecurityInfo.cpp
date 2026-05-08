@@ -10,6 +10,9 @@ SecurityInfo::SecurityInfo(const com::liversedge::messages::SecurityDefinition& 
     auto symbolField = const_cast<com::liversedge::messages::SecurityDefinition&>(secDef).symbol();
     m_symbol = SBEUtils::extractVarString(symbolField, secDef.sbeBlockLength());
 
+    auto marketSymbolField = const_cast<com::liversedge::messages::SecurityDefinition&>(secDef).marketSymbol();
+    m_marketSymbol = SBEUtils::extractVarString(marketSymbolField, secDef.sbeBlockLength(), m_symbol.length());
+
     m_baseCurrency = secDef.baseCurrency();
     m_quoteCurrency = secDef.quoteCurrency();
     m_settlCurrency = secDef.settlCurrency();

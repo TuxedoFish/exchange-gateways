@@ -35,11 +35,15 @@ void HyperliquidMDApplication::onOutcomeMeta(const hyperliquid::OutcomeMetaRespo
 }
 
 void HyperliquidMDApplication::onL2Book(const hyperliquid::L2BookSnapshot& snapshot) {
-    // Check for expired outcomes and trigger re-fetch
     if (m_processor.hasExpiredOutcomes())
     {
-        spdlog::info("Detected expired outcomes, removing and re-fetching outcomeMeta");
+        spdlog::info("Detected expired outcomes, removing SecurityDefinitions");
         m_processor.removeExpiredOutcomes();
+    }
+
+    if (m_processor.shouldRefetchOutcomeMeta())
+    {
+        spdlog::info("Refetching outcomeMeta after expiry delay");
         HyperliquidMDApplicationBase::refetchOutcomeMeta();
     }
 

@@ -24,6 +24,8 @@ namespace
     }
 
     constexpr uint64_t STALE_THRESHOLD_MS = 0;
+    constexpr auto EXPIRY_BUFFER = std::chrono::minutes(5);
+    constexpr auto REFETCH_DELAY = std::chrono::minutes(5);
 }
 
 HyperliquidMessageProcessor::HyperliquidMessageProcessor(SBEBinaryWriter& writer)
@@ -105,6 +107,8 @@ void HyperliquidMessageProcessor::onOutcomeMeta(
     const hyperliquid::OutcomeMetaResponse& response,
     const std::vector<DesiredOutcome>& desiredOutcomes)
 {
+    m_pendingRefetch = false;
+
     for (const auto& outcome : response.outcomes)
     {
         for (const auto& desired : desiredOutcomes)
@@ -210,6 +214,8 @@ void HyperliquidMessageProcessor::emitOutcomeSecurityDefinition(const OutcomeIns
     SBEUtils::setQty(m_securityDefinition.minSize(), "0");
     SBEUtils::setQty(m_securityDefinition.minAmount(), "10");
     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), outcome.symbol);
+    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.marketSymbol(),
+        hyperliquid::outcomeCoin(outcome.outcomeIndex, outcome.side));
 
     if (!m_writer.writeMessage(m_securityDefinition))
     {
@@ -234,7 +240,7 @@ bool HyperliquidMessageProcessor::hasExpiredOutcomes() const
     auto now = std::chrono::system_clock::now();
     for (const auto& outcome : m_activeOutcomes)
     {
-        if (now >= outcome.expiry)
+        if (now >= outcome.expiry - EXPIRY_BUFFER)
         {
             return true;
         }
@@ -251,9 +257,14 @@ void HyperliquidMessageProcessor::removeExpiredOutcomes()
     auto it = m_activeOutcomes.begin();
     while (it != m_activeOutcomes.end())
     {
-        if (now >= it->expiry)
+        if (now >= it->expiry - EXPIRY_BUFFER)
         {
             spdlog::info("Outcome {} expired, removing SecurityDefinition", it->symbol);
+            if (it->expiry > m_lastOutcomeExpiry)
+            {
+                m_lastOutcomeExpiry = it->expiry;
+            }
+            m_pendingRefetch = true;
 
             if (m_shouldOutput)
             {
@@ -262,8 +273,10 @@ void HyperliquidMessageProcessor::removeExpiredOutcomes()
                     m_securityDefinition.id(it->securityId);
                     m_securityDefinition.timestamp(timestampNanos);
                     m_securityDefinition.action(com::liversedge::messages::ActionEnum::REMOVE);
-                    // Must still set var-length field for valid SBE
+                    // Must still set var-length fields for valid SBE
                     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), it->symbol);
+                    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.marketSymbol(),
+                        hyperliquid::outcomeCoin(it->outcomeIndex, it->side));
                     m_writer.writeMessage(m_securityDefinition);
                 }
             }
@@ -279,6 +292,13 @@ void HyperliquidMessageProcessor::removeExpiredOutcomes()
             ++it;
         }
     }
+}
+
+bool HyperliquidMessageProcessor::shouldRefetchOutcomeMeta() const
+{
+    if (!m_pendingRefetch) return false;
+    auto now = std::chrono::system_clock::now();
+    return now >= m_lastOutcomeExpiry + REFETCH_DELAY;
 }
 
 void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& snapshot)
@@ -532,6 +552,7 @@ void HyperliquidMessageProcessor::emitSecurityDefinitionWithPricePrecision(const
     SBEUtils::setQty(m_securityDefinition.minSize(), "0");
     SBEUtils::setQty(m_securityDefinition.minAmount(), "10");
     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), asset.name);
+    SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.marketSymbol(), asset.name);
 
     if (!m_writer.writeMessage(m_securityDefinition))
     {

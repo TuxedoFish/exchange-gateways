@@ -204,6 +204,7 @@
         <field name="marginingType" id="17" type="MarginingType" description="Margining type (for perps)"/>
         <field name="positionCurrency" id="18" type="Currency" description="Currency used for position"/>
         <field name="symbol" id="2" type="VarStringEncoding" description="Security symbol."/>
+        <field name="marketSymbol" id="20" type="VarStringEncoding" description="Exchange-level asset identifier for order routing."/>
     </sbe:message>
 
     <sbe:message name="SecurityStatus" id="102" description="Security Definition Message">

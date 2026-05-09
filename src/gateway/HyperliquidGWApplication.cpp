@@ -36,9 +36,11 @@ void HyperliquidGWApplication::onMessage(const std::string& message)
     m_wsParser.crack(message, *this);
 }
 
-void HyperliquidGWApplication::onPostResponse(const std::string& message, hyperliquid::RestEndpointType type)
+void HyperliquidGWApplication::onPostResponse(const std::string& message, hyperliquid::RestEndpointType type,
+                                               std::optional<uint64_t> correlationId)
 {
-    m_restParser.parse(message, type);
+    m_lastPostResponse = message;
+    m_restParser.parse(message, type, correlationId);
 }
 
 void HyperliquidGWApplication::onConnected()
@@ -55,9 +57,15 @@ void HyperliquidGWApplication::onDisconnected(bool hasError, const std::string& 
     m_connected = false;
 
     std::lock_guard<std::mutex> lock(m_pendingMutex);
-    m_pendingPlaces = {};
-    m_pendingModifies = {};
-    m_pendingCancels = {};
+    m_pendingPlaces.clear();
+    m_pendingModifies.clear();
+    m_pendingCancels.clear();
+
+    if (!m_bufferedFills.empty())
+    {
+        spdlog::warn("Clearing {} buffered fills on disconnect", m_bufferedFills.size());
+        m_bufferedFills.clear();
+    }
 }
 
 // WebsocketMessageHandler
@@ -67,6 +75,9 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     spdlog::info("OrderUpdate coin={} side={} status={} oid={} sz={} limitPx={} cloid={}",
                  update.coin, update.side, hyperliquid::toString(update.status),
                  update.oid, update.sz, update.limitPx, update.cloid);
+
+    // Check for timed-out buffered fills on every order update
+    checkBufferedFillTimeouts();
 
     // Register oid->cloid mapping for fill correlation
     if (m_ordersHandler) {
@@ -127,6 +138,9 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
                  update.limitPx, update.origSz, update.sz, cumQty);
     m_sbeWriter.writeMessage(sbeExecReport);
 
+    // Replay any fills that arrived before this oid was registered (after emitting the OrderUpdate ER)
+    replayBufferedFills(update.oid);
+
     // Clean up mapping on terminal states
     if (m_ordersHandler &&
         (update.status == hyperliquid::OrderStatus::Filled ||
@@ -149,6 +163,26 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill)
         return;
     }
 
+    // Check for timed-out buffered fills
+    checkBufferedFillTimeouts();
+
+    std::string clientOrderId;
+    if (m_ordersHandler) {
+        clientOrderId = m_ordersHandler->lookupClientOrderIdByOid(fill.oid);
+    }
+
+    if (clientOrderId.empty())
+    {
+        spdlog::warn("Fill for unknown oid={}, buffering until OrderUpdate arrives", fill.oid);
+        m_bufferedFills.push_back({fill, std::chrono::steady_clock::now()});
+        return;
+    }
+
+    emitFillExecutionReport(fill, clientOrderId);
+}
+
+void HyperliquidGWApplication::emitFillExecutionReport(const hyperliquid::Fill& fill, const std::string& clientOrderId)
+{
     com::liversedge::messages::ExecutionReport sbeExecReport;
     if (!m_sbeWriter.prepareMessage(sbeExecReport))
     {
@@ -169,11 +203,6 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill)
     SBEUtils::setPrice(sbeExecReport.lastPx(), std::to_string(fill.px));
     SBEUtils::setQty(sbeExecReport.lastQty(), std::to_string(fill.sz));
 
-    std::string clientOrderId;
-    if (m_ordersHandler) {
-        clientOrderId = m_ordersHandler->lookupClientOrderIdByOid(fill.oid);
-    }
-
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), "");
@@ -186,14 +215,28 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill)
 
 // RestEndpointListener
 
-void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderResponse& response)
+void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderResponse& response,
+                                             std::optional<uint64_t> correlationId)
 {
-    spdlog::info("PlaceOrder response status={}", response.status);
+    auto pending = takePending(m_pendingPlaces, correlationId, "PlaceOrder");
+
+    if (response.status != "ok" && response.statuses.empty())
+    {
+        spdlog::error("PlaceOrder error: {}", m_lastPostResponse);
+        if (!pending.cloid.empty())
+        {
+            sendNewOrderReject(pending.cloid, pending.securityId, response.status);
+        }
+        return;
+    }
+
+    if (response.status == "ok")
+    {
+        spdlog::info("PlaceOrder response status={}", response.status);
+    }
 
     for (const auto& s : response.statuses)
     {
-        auto pending = popPending(m_pendingPlaces, "PlaceOrder");
-
         if (s.error)
         {
             spdlog::error("PlaceOrder error: {} cloid={}", *s.error, pending.cloid);
@@ -201,43 +244,57 @@ void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderRespons
         }
         else if (s.resting)
         {
-            spdlog::info("PlaceOrder resting oid={}", s.resting->oid);
-            if (m_ordersHandler) {
-                m_ordersHandler->setActiveOid(s.resting->oid, pending.cloid);
-            }
+            spdlog::info("PlaceOrder resting oid={} cloid={}", s.resting->oid, pending.cloid);
         }
         else if (s.filled)
         {
-            spdlog::info("PlaceOrder filled oid={} avgPx={} totalSz={}",
-                         s.filled->oid, s.filled->avgPx, s.filled->totalSz);
-            if (m_ordersHandler) {
-                m_ordersHandler->setActiveOid(s.filled->oid, pending.cloid);
-            }
+            spdlog::info("PlaceOrder filled oid={} cloid={} avgPx={} totalSz={}",
+                         s.filled->oid, pending.cloid, s.filled->avgPx, s.filled->totalSz);
         }
     }
 }
 
-void HyperliquidGWApplication::onModifyOrder(const hyperliquid::ModifyOrderResponse& response)
+void HyperliquidGWApplication::onModifyOrder(const hyperliquid::ModifyOrderResponse& response,
+                                              std::optional<uint64_t> correlationId)
 {
-    spdlog::info("ModifyOrder response status={}", response.status);
-
-    auto pending = popPending(m_pendingModifies, "ModifyOrder");
+    auto pending = takePending(m_pendingModifies, correlationId, "ModifyOrder");
 
     if (response.status != "ok")
     {
-        spdlog::error("ModifyOrder error status={} cloid={}", response.status, pending.cloid);
-        sendAmendReject(pending.cloid, pending.securityId, response.status);
+        spdlog::error("ModifyOrder error: {}", m_lastPostResponse);
+        if (!pending.cloid.empty())
+        {
+            sendAmendReject(pending.cloid, pending.securityId, response.status);
+        }
+    }
+    else
+    {
+        spdlog::info("ModifyOrder response status={}", response.status);
     }
 }
 
-void HyperliquidGWApplication::onCancelOrder(const hyperliquid::CancelOrderResponse& response)
+void HyperliquidGWApplication::onCancelOrder(const hyperliquid::CancelOrderResponse& response,
+                                              std::optional<uint64_t> correlationId)
 {
-    spdlog::info("CancelOrder response status={}", response.status);
+    auto pending = takePending(m_pendingCancels, correlationId, "CancelOrder");
+
+    if (response.status != "ok" && response.statuses.empty())
+    {
+        spdlog::error("CancelOrder error: {}", m_lastPostResponse);
+        if (!pending.cloid.empty())
+        {
+            sendCancelReject(pending.cloid, pending.securityId, response.status);
+        }
+        return;
+    }
+
+    if (response.status == "ok")
+    {
+        spdlog::info("CancelOrder response status={}", response.status);
+    }
 
     for (const auto& s : response.statuses)
     {
-        auto pending = popPending(m_pendingCancels, "CancelOrder");
-
         if (s.error)
         {
             spdlog::error("CancelOrder error: {} cloid={}", *s.error, pending.cloid);
@@ -250,36 +307,49 @@ void HyperliquidGWApplication::onCancelOrder(const hyperliquid::CancelOrderRespo
     }
 }
 
-HyperliquidGWApplication::PendingRequest HyperliquidGWApplication::popPending(
-    std::queue<PendingRequest>& queue, const std::string& label)
+HyperliquidGWApplication::PendingRequest HyperliquidGWApplication::takePending(
+    std::unordered_map<uint64_t, PendingRequest>& map,
+    std::optional<uint64_t> correlationId, const std::string& label)
 {
     std::lock_guard<std::mutex> lock(m_pendingMutex);
-    if (queue.empty())
+    if (!correlationId)
     {
-        spdlog::warn("{} response with no pending request", label);
+        spdlog::warn("{} response with no correlationId", label);
         return {};
     }
-    auto pending = queue.front();
-    queue.pop();
+    auto it = map.find(*correlationId);
+    if (it == map.end())
+    {
+        spdlog::warn("{} response for unknown correlationId={}", label, *correlationId);
+        return {};
+    }
+    auto pending = it->second;
+    map.erase(it);
     return pending;
 }
 
-void HyperliquidGWApplication::trackPendingPlace(const std::string& cloid, std::int32_t securityId)
+uint64_t HyperliquidGWApplication::trackPendingPlace(const std::string& cloid, std::int32_t securityId)
 {
     std::lock_guard<std::mutex> lock(m_pendingMutex);
-    m_pendingPlaces.push({cloid, securityId});
+    uint64_t id = m_nextCorrelationId++;
+    m_pendingPlaces[id] = {cloid, securityId};
+    return id;
 }
 
-void HyperliquidGWApplication::trackPendingModify(const std::string& cloid, std::int32_t securityId)
+uint64_t HyperliquidGWApplication::trackPendingModify(const std::string& cloid, std::int32_t securityId)
 {
     std::lock_guard<std::mutex> lock(m_pendingMutex);
-    m_pendingModifies.push({cloid, securityId});
+    uint64_t id = m_nextCorrelationId++;
+    m_pendingModifies[id] = {cloid, securityId};
+    return id;
 }
 
-void HyperliquidGWApplication::trackPendingCancel(const std::string& cloid, std::int32_t securityId)
+uint64_t HyperliquidGWApplication::trackPendingCancel(const std::string& cloid, std::int32_t securityId)
 {
     std::lock_guard<std::mutex> lock(m_pendingMutex);
-    m_pendingCancels.push({cloid, securityId});
+    uint64_t id = m_nextCorrelationId++;
+    m_pendingCancels[id] = {cloid, securityId};
+    return id;
 }
 
 // Reject helpers
@@ -357,6 +427,50 @@ void HyperliquidGWApplication::sendCancelReject(const std::string& cloid, std::i
 
     spdlog::info("Sending CancelReject clientOrderId={} reason={}", clientOrderId, reason);
     m_sbeWriter.writeMessage(sbeReject);
+}
+
+// Fill buffering
+
+void HyperliquidGWApplication::replayBufferedFills(uint64_t oid)
+{
+    auto it = m_bufferedFills.begin();
+    while (it != m_bufferedFills.end())
+    {
+        if (it->fill.oid == oid)
+        {
+            std::string clientOrderId;
+            if (m_ordersHandler) {
+                clientOrderId = m_ordersHandler->lookupClientOrderIdByOid(oid);
+            }
+            spdlog::info("Replaying buffered fill oid={} clientOrderId={} px={} sz={}",
+                         oid, clientOrderId, it->fill.px, it->fill.sz);
+            emitFillExecutionReport(it->fill, clientOrderId);
+            it = m_bufferedFills.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+void HyperliquidGWApplication::checkBufferedFillTimeouts()
+{
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = m_bufferedFills.begin(); it != m_bufferedFills.end(); )
+    {
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->bufferedAt).count();
+        if (elapsed >= 5)
+        {
+            spdlog::critical("Buffered fill timed out after {}s: oid={} coin={} px={} sz={} - OrderUpdate never arrived",
+                             elapsed, it->fill.oid, it->fill.coin, it->fill.px, it->fill.sz);
+            it = m_bufferedFills.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 // Private helpers

@@ -61,8 +61,8 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
 
         spdlog::info("Sending placeOrder {} cloid={} ({}) price={} size={}",
                      clientOrderId, cloid, secInfo->getSymbol(), order.price, order.size);
-        m_gwApplication.trackPendingPlace(cloid, securityId);
-        m_gwApplication.getWebsocket().placeOrder({order}, hyperliquid::Grouping::Na);
+        uint64_t corrId = m_gwApplication.trackPendingPlace(cloid, securityId);
+        m_gwApplication.getWebsocket().placeOrder({order}, hyperliquid::Grouping::Na, std::nullopt, corrId);
 
     } catch (const std::exception& e) {
         spdlog::error("Error processing NewOrder: {}", e.what());
@@ -123,8 +123,8 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         modify.cloid = cloid;
         modify.order = order;
 
-        m_gwApplication.trackPendingModify(cloid, securityId);
-        m_gwApplication.getWebsocket().modifyOrder(modify);
+        uint64_t corrId = m_gwApplication.trackPendingModify(cloid, securityId);
+        m_gwApplication.getWebsocket().modifyOrder(modify, corrId);
         spdlog::info("Sent modifyOrder for {} cloid={} ({})", clientOrderId, cloid, secInfo->getSymbol());
 
     } catch (const std::exception& e) {
@@ -176,8 +176,8 @@ void HyperliquidOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOr
         }
         cancel.cloid = cloid;
 
-        m_gwApplication.trackPendingCancel(cloid, securityId);
-        m_gwApplication.getWebsocket().cancelOrderByCloid({cancel});
+        uint64_t corrId = m_gwApplication.trackPendingCancel(cloid, securityId);
+        m_gwApplication.getWebsocket().cancelOrderByCloid({cancel}, corrId);
         spdlog::info("Sent cancelOrderByCloid for {} cloid={} ({})", origClientOrderId, cloid, secInfo->getSymbol());
 
     } catch (const std::exception& e) {

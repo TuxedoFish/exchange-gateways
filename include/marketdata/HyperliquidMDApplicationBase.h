@@ -1,7 +1,9 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -43,8 +45,8 @@ public:
     virtual void onMessage(const std::string& message, hyperliquid::RestEndpointType type) override;
 
     // hyperliquid::RestEndpointListener
-    virtual void onMeta(const hyperliquid::MetaResponse& response) override;
-    virtual void onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response) override;
+    virtual void onMeta(const hyperliquid::MetaResponse& response, std::optional<uint64_t> correlationId = std::nullopt) override;
+    virtual void onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response, std::optional<uint64_t> correlationId = std::nullopt) override;
 
     void refetchOutcomeMeta();
 

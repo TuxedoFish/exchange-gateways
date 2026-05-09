@@ -23,15 +23,17 @@ void HyperliquidMDApplication::onDisconnected(bool hasError, const std::string& 
     HyperliquidMDApplicationBase::onDisconnected(hasError, errMsg);
 }
 
-void HyperliquidMDApplication::onMeta(const hyperliquid::MetaResponse& response) {
+void HyperliquidMDApplication::onMeta(const hyperliquid::MetaResponse& response,
+                                       std::optional<uint64_t> correlationId) {
     m_processor.setDesiredCoins(m_desiredCoins);
     m_processor.onMeta(response);
-    HyperliquidMDApplicationBase::onMeta(response);
+    HyperliquidMDApplicationBase::onMeta(response, correlationId);
 }
 
-void HyperliquidMDApplication::onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response) {
+void HyperliquidMDApplication::onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response,
+                                              std::optional<uint64_t> correlationId) {
     m_processor.onOutcomeMeta(response, m_desiredOutcomes);
-    HyperliquidMDApplicationBase::onOutcomeMeta(response);
+    HyperliquidMDApplicationBase::onOutcomeMeta(response, correlationId);
 }
 
 void HyperliquidMDApplication::onL2Book(const hyperliquid::L2BookSnapshot& snapshot) {

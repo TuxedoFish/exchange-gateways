@@ -1,9 +1,14 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
-#include <queue>
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 #include "../util/SimpleConfig.h"
 #include "../sbe/SBEBinaryWriter.h"
 #include "../sbe/SBEUtils.h"
@@ -33,14 +38,15 @@ public:
     void setOrdersHandler(HyperliquidOrdersHandler* handler) { m_ordersHandler = handler; }
     hyperliquid::WebsocketApi& getWebsocket() { return *m_websocket; }
 
-    // Track pending requests for post response correlation
-    void trackPendingPlace(const std::string& cloid, std::int32_t securityId);
-    void trackPendingModify(const std::string& cloid, std::int32_t securityId);
-    void trackPendingCancel(const std::string& cloid, std::int32_t securityId);
+    // Track pending requests for post response correlation (returns correlationId)
+    uint64_t trackPendingPlace(const std::string& cloid, std::int32_t securityId);
+    uint64_t trackPendingModify(const std::string& cloid, std::int32_t securityId);
+    uint64_t trackPendingCancel(const std::string& cloid, std::int32_t securityId);
 
     // WebsocketApiListener
     void onMessage(const std::string& message) override;
-    void onPostResponse(const std::string& message, hyperliquid::RestEndpointType type) override;
+    void onPostResponse(const std::string& message, hyperliquid::RestEndpointType type,
+                        std::optional<uint64_t> correlationId = std::nullopt) override;
     void onConnected() override;
     void onDisconnected(bool hasError, const std::string& errMsg) override;
 
@@ -49,9 +55,9 @@ public:
     void onUserFill(const hyperliquid::Fill& fill) override;
 
     // RestEndpointListener
-    void onPlaceOrder(const hyperliquid::PlaceOrderResponse& response) override;
-    void onModifyOrder(const hyperliquid::ModifyOrderResponse& response) override;
-    void onCancelOrder(const hyperliquid::CancelOrderResponse& response) override;
+    void onPlaceOrder(const hyperliquid::PlaceOrderResponse& response, std::optional<uint64_t> correlationId = std::nullopt) override;
+    void onModifyOrder(const hyperliquid::ModifyOrderResponse& response, std::optional<uint64_t> correlationId = std::nullopt) override;
+    void onCancelOrder(const hyperliquid::CancelOrderResponse& response, std::optional<uint64_t> correlationId = std::nullopt) override;
 
 private:
     SimpleConfig& m_config;
@@ -63,6 +69,7 @@ private:
     hyperliquid::RestApiMessageParser m_restParser;
     bool m_connected = false;
     HyperliquidOrdersHandler* m_ordersHandler = nullptr;
+    std::string m_lastPostResponse;
 
     struct PendingRequest
     {
@@ -70,11 +77,13 @@ private:
         std::int32_t securityId;
     };
     mutable std::mutex m_pendingMutex;
-    std::queue<PendingRequest> m_pendingPlaces;
-    std::queue<PendingRequest> m_pendingModifies;
-    std::queue<PendingRequest> m_pendingCancels;
+    std::atomic<uint64_t> m_nextCorrelationId{1};
+    std::unordered_map<uint64_t, PendingRequest> m_pendingPlaces;
+    std::unordered_map<uint64_t, PendingRequest> m_pendingModifies;
+    std::unordered_map<uint64_t, PendingRequest> m_pendingCancels;
 
-    PendingRequest popPending(std::queue<PendingRequest>& queue, const std::string& label);
+    PendingRequest takePending(std::unordered_map<uint64_t, PendingRequest>& map,
+                               std::optional<uint64_t> correlationId, const std::string& label);
 
     void sendNewOrderReject(const std::string& cloid, std::int32_t securityId, const std::string& reason);
     void sendAmendReject(const std::string& cloid, std::int32_t securityId, const std::string& reason);
@@ -83,4 +92,16 @@ private:
     static hyperliquid::Environment getEnvironment(const std::string& envName);
     static com::liversedge::messages::OrdStatus::Value mapOrderStatus(hyperliquid::OrderStatus status);
     static com::liversedge::messages::Side::Value mapSide(char side);
+
+    // Fill buffering for race condition: fills arriving before oid registration
+    struct BufferedFill
+    {
+        hyperliquid::Fill fill;
+        std::chrono::steady_clock::time_point bufferedAt;
+    };
+    std::vector<BufferedFill> m_bufferedFills;
+
+    void replayBufferedFills(uint64_t oid);
+    void checkBufferedFillTimeouts();
+    void emitFillExecutionReport(const hyperliquid::Fill& fill, const std::string& clientOrderId);
 };

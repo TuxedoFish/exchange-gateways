@@ -81,7 +81,8 @@ void HyperliquidMDApplicationBase::onMessage(const std::string& message, hyperli
 }
 
 // hyperliquid::RestEndpointListener
-void HyperliquidMDApplicationBase::onMeta(const hyperliquid::MetaResponse& response) {
+void HyperliquidMDApplicationBase::onMeta(const hyperliquid::MetaResponse& response,
+                                           std::optional<uint64_t> correlationId) {
     m_universe = response.universe;
     spdlog::info("Loaded {} assets", m_universe.size());
 
@@ -102,7 +103,8 @@ void HyperliquidMDApplicationBase::refetchOutcomeMeta()
     }
 }
 
-void HyperliquidMDApplicationBase::onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response)
+void HyperliquidMDApplicationBase::onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response,
+                                                   std::optional<uint64_t> correlationId)
 {
     spdlog::info("Loaded {} outcomes", response.outcomes.size());
 

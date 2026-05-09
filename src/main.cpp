@@ -14,9 +14,12 @@ static void setupLogging(const SimpleConfig& config)
         sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(logFilePath, true));
     }
 
+    sinks[0]->set_level(spdlog::level::info); // stdout: info+
+    // file sink (if present) defaults to trace, so debug passes through
+
     auto logger = std::make_shared<spdlog::logger>("", sinks.begin(), sinks.end());
-    logger->set_level(spdlog::level::info);
-    logger->flush_on(spdlog::level::info);
+    logger->set_level(spdlog::level::debug);
+    logger->flush_on(spdlog::level::debug);
     spdlog::set_default_logger(logger);
 
     if (!logFilePath.empty())

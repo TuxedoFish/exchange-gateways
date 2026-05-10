@@ -42,6 +42,18 @@ public:
     bool isActiveOid(uint64_t oid, const std::string& cloid) const;
     void removeOrder(const std::string& cloid);
 
+    // Order state tracking for cumQty
+    struct OrderState
+    {
+        double origSz = 0.0;
+        double cumQty = 0.0;
+        std::int32_t securityId = 0;
+    };
+
+    void initOrderState(const std::string& cloid, double origSz, std::int32_t securityId);
+    OrderState applyFill(const std::string& cloid, double fillSz);
+    std::string lookupCloidByOid(uint64_t oid) const;
+
 private:
     bool m_isReplay = false;
     RefDataHolder& m_refDataHolder;
@@ -51,7 +63,7 @@ private:
     void sendCancelReject(com::liversedge::messages::CancelOrder& cancelOrder);
     void sendNewOrderReject(com::liversedge::messages::NewOrder& newOrder);
 
-    static hyperliquid::Tif mapTimeInForce(com::liversedge::messages::TimeInForce::Value tif);
+    static hyperliquid::Tif mapOrderTypeToTif(com::liversedge::messages::OrderType::Value orderType);
 
     // Bidirectional mapping: internal clientOrderId <-> Hyperliquid cloid
     std::unordered_map<std::string, std::string> m_clientToCloid;
@@ -60,4 +72,15 @@ private:
     std::unordered_map<uint64_t, std::string> m_oidToCloid;
     // Cloid -> active oid (tracks current oid after amends)
     std::unordered_map<std::string, uint64_t> m_cloidToOid;
+
+    // HL asset identity stored at place time (survives security removal)
+    struct OrderAssetInfo
+    {
+        std::string asset;              // coin string (e.g. "BTC")
+        std::optional<int> assetId;     // prediction market asset id
+    };
+    std::unordered_map<std::string, OrderAssetInfo> m_cloidToAsset;
+
+    // Live order state for cumQty tracking (keyed by cloid)
+    std::unordered_map<std::string, OrderState> m_cloidToState;
 };

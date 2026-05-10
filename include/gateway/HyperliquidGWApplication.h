@@ -103,5 +103,5 @@ private:
 
     void replayBufferedFills(uint64_t oid);
     void checkBufferedFillTimeouts();
-    void emitFillExecutionReport(const hyperliquid::Fill& fill, const std::string& clientOrderId);
+    void emitFillExecutionReport(const hyperliquid::Fill& fill, const std::string& clientOrderId, const std::string& cloid);
 };

@@ -44,19 +44,24 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         }
 
         hyperliquid::OrderRequest order;
+        OrderAssetInfo assetInfo;
         if (secInfo->getSecurityType() == com::liversedge::messages::SecurityType::PREDICTION_MARKET) {
-            order.assetId = 100000000 + std::stoi(secInfo->getMarketSymbol().substr(1));
+            int id = 100000000 + std::stoi(secInfo->getMarketSymbol().substr(1));
+            order.assetId = id;
+            assetInfo.assetId = id;
         } else {
             order.asset = secInfo->getSymbol();
+            assetInfo.asset = secInfo->getSymbol();
         }
         order.isBuy = (side == com::liversedge::messages::Side::BUY);
         order.price = std::stod(price.str(8, std::ios_base::fixed));
         order.size = std::stod(quantity.str(8, std::ios_base::fixed));
         order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{hyperliquid::Tif::Alo};
+        order.limit = hyperliquid::LimitOrderType{mapOrderTypeToTif(decoder.orderType())};
         std::string cloid = hyperliquid::generateCloid();
         m_clientToCloid[clientOrderId] = cloid;
         m_cloidToClient[cloid] = clientOrderId;
+        m_cloidToAsset[cloid] = assetInfo;
         order.cloid = cloid;
 
         spdlog::info("Sending placeOrder {} cloid={} ({}) price={} size={}",
@@ -116,7 +121,7 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         order.price = price.convert_to<double>();
         order.size = quantity.convert_to<double>();
         order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{hyperliquid::Tif::Alo};
+        order.limit = hyperliquid::LimitOrderType{mapOrderTypeToTif(decoder.orderType())};
         order.cloid = cloid;
 
         hyperliquid::ModifyRequest modify;
@@ -147,13 +152,6 @@ void HyperliquidOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOr
         spdlog::info("Received SBE CancelOrder clientOrderId={} origClientOrderId={} securityId={}",
                      clientOrderId, origClientOrderId, securityId);
 
-        const SecurityInfo* secInfo = m_refDataHolder.getSecurityInfo(securityId);
-        if (!secInfo) {
-            spdlog::error("Security not found for ID: {}", securityId);
-            sendCancelReject(decoder);
-            return;
-        }
-
         if (!m_gwApplication.isConnected()) {
             spdlog::error("Not connected, cannot cancel {}", origClientOrderId);
             sendCancelReject(decoder);
@@ -168,17 +166,25 @@ void HyperliquidOrdersHandler::onCancelOrder(com::liversedge::messages::CancelOr
         }
         const std::string& cloid = it->second;
 
+        auto assetIt = m_cloidToAsset.find(cloid);
+        if (assetIt == m_cloidToAsset.end()) {
+            spdlog::error("No asset info found for cancel cloid={}", cloid);
+            sendCancelReject(decoder);
+            return;
+        }
+        const OrderAssetInfo& assetInfo = assetIt->second;
+
         hyperliquid::CancelByCloidRequest cancel;
-        if (secInfo->getSecurityType() == com::liversedge::messages::SecurityType::PREDICTION_MARKET) {
-            cancel.assetId = 100000000 + std::stoi(secInfo->getMarketSymbol().substr(1));
+        if (assetInfo.assetId) {
+            cancel.assetId = *assetInfo.assetId;
         } else {
-            cancel.asset = secInfo->getSymbol();
+            cancel.asset = assetInfo.asset;
         }
         cancel.cloid = cloid;
 
         uint64_t corrId = m_gwApplication.trackPendingCancel(cloid, securityId);
         m_gwApplication.getWebsocket().cancelOrderByCloid({cancel}, corrId);
-        spdlog::info("Sent cancelOrderByCloid for {} cloid={} ({})", origClientOrderId, cloid, secInfo->getSymbol());
+        spdlog::info("Sent cancelOrderByCloid for {} cloid={}", origClientOrderId, cloid);
 
     } catch (const std::exception& e) {
         spdlog::error("Error processing CancelOrder: {}", e.what());
@@ -246,6 +252,29 @@ bool HyperliquidOrdersHandler::isActiveOid(uint64_t oid, const std::string& cloi
     return it->second == oid;
 }
 
+void HyperliquidOrdersHandler::initOrderState(const std::string& cloid, double origSz, std::int32_t securityId)
+{
+    auto& state = m_cloidToState[cloid];
+    state.origSz = origSz;
+    state.securityId = securityId;
+}
+
+HyperliquidOrdersHandler::OrderState HyperliquidOrdersHandler::applyFill(const std::string& cloid, double fillSz)
+{
+    auto& state = m_cloidToState[cloid];
+    state.cumQty += fillSz;
+    return state;
+}
+
+std::string HyperliquidOrdersHandler::lookupCloidByOid(uint64_t oid) const
+{
+    auto it = m_oidToCloid.find(oid);
+    if (it != m_oidToCloid.end()) {
+        return it->second;
+    }
+    return "";
+}
+
 void HyperliquidOrdersHandler::removeOrder(const std::string& cloid)
 {
     auto clientIt = m_cloidToClient.find(cloid);
@@ -255,6 +284,8 @@ void HyperliquidOrdersHandler::removeOrder(const std::string& cloid)
     }
 
     m_cloidToOid.erase(cloid);
+    m_cloidToAsset.erase(cloid);
+    m_cloidToState.erase(cloid);
 
     // Remove oid entries pointing to this cloid
     for (auto it = m_oidToCloid.begin(); it != m_oidToCloid.end(); ) {
@@ -266,15 +297,13 @@ void HyperliquidOrdersHandler::removeOrder(const std::string& cloid)
     }
 }
 
-hyperliquid::Tif HyperliquidOrdersHandler::mapTimeInForce(com::liversedge::messages::TimeInForce::Value tif)
+hyperliquid::Tif HyperliquidOrdersHandler::mapOrderTypeToTif(com::liversedge::messages::OrderType::Value orderType)
 {
-    switch (tif)
+    switch (orderType)
     {
-    case com::liversedge::messages::TimeInForce::GTC:
-        return hyperliquid::Tif::Gtc;
-    case com::liversedge::messages::TimeInForce::IOC:
+    case com::liversedge::messages::OrderType::MARKET:
         return hyperliquid::Tif::Ioc;
-    case com::liversedge::messages::TimeInForce::FOK:
+    case com::liversedge::messages::OrderType::LIMIT:
     default:
         return hyperliquid::Tif::Alo;
     }

@@ -72,9 +72,9 @@ void HyperliquidGWApplication::onDisconnected(bool hasError, const std::string& 
 
 void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& update)
 {
-    spdlog::info("OrderUpdate coin={} side={} status={} oid={} sz={} limitPx={} cloid={}",
+    spdlog::info("OrderUpdate coin={} side={} status={} oid={} sz={} origSz={} limitPx={} cloid={}",
                  update.coin, update.side, hyperliquid::toString(update.status),
-                 update.oid, update.sz, update.limitPx, update.cloid);
+                 update.oid, update.sz, update.origSz, update.limitPx, update.cloid);
 
     // Check for timed-out buffered fills on every order update
     checkBufferedFillTimeouts();
@@ -84,18 +84,28 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
         m_ordersHandler->registerOid(update.oid, update.cloid);
     }
 
-    // On Open, update active oid and forward
-    // On other statuses, only forward if oid matches active (skip stale cancels from amends)
     if (update.status == hyperliquid::OrderStatus::Open) {
         if (m_ordersHandler) {
             m_ordersHandler->setActiveOid(update.oid, update.cloid);
+            m_ordersHandler->initOrderState(update.cloid, update.origSz,
+                                            m_refDataHolder.getSecurityIdBySymbol(update.coin));
         }
+        // Fall through to emit NEW ER as ack, then replay buffered fills
     } else if (m_ordersHandler && !m_ordersHandler->isActiveOid(update.oid, update.cloid)) {
         spdlog::info("Skipping stale order update oid={} cloid={} status={} (not active oid)",
                      update.oid, update.cloid, hyperliquid::toString(update.status));
         return;
+    } else if (update.status == hyperliquid::OrderStatus::Filled) {
+        // Fill ER already sent via onUserFill path
+        spdlog::info("OrderUpdate Filled oid={} cloid={} - cleanup only (fill ER from onUserFill)",
+                     update.oid, update.cloid);
+        if (m_ordersHandler) {
+            m_ordersHandler->removeOrder(update.cloid);
+        }
+        return;  // no ER for Filled
     }
 
+    // Open/Canceled/Rejected/MarginCanceled/OracleRejected — emit ER
     com::liversedge::messages::ExecutionReport sbeExecReport;
     if (!m_sbeWriter.prepareMessage(sbeExecReport))
     {
@@ -128,6 +138,11 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
         clientOrderId = m_ordersHandler->lookupClientOrderId(update.cloid);
     }
 
+    if (clientOrderId.empty()) {
+        spdlog::info("Skipping OrderUpdate ER for cloid={} - order already handled/removed", update.cloid);
+        return;
+    }
+
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), "");
@@ -138,17 +153,14 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
                  update.limitPx, update.origSz, update.sz, cumQty);
     m_sbeWriter.writeMessage(sbeExecReport);
 
-    // Replay any fills that arrived before this oid was registered (after emitting the OrderUpdate ER)
-    replayBufferedFills(update.oid);
-
-    // Clean up mapping on terminal states
-    if (m_ordersHandler &&
-        (update.status == hyperliquid::OrderStatus::Filled ||
-         update.status == hyperliquid::OrderStatus::Canceled ||
-         update.status == hyperliquid::OrderStatus::Rejected ||
-         update.status == hyperliquid::OrderStatus::MarginCanceled ||
-         update.status == hyperliquid::OrderStatus::OracleRejected)) {
-        m_ordersHandler->removeOrder(update.cloid);
+    if (update.status == hyperliquid::OrderStatus::Open) {
+        // Replay any fills that arrived before this oid was registered
+        replayBufferedFills(update.oid);
+    } else {
+        // Clean up mapping on terminal cancel/reject states
+        if (m_ordersHandler) {
+            m_ordersHandler->removeOrder(update.cloid);
+        }
     }
 }
 
@@ -167,8 +179,10 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill)
     checkBufferedFillTimeouts();
 
     std::string clientOrderId;
+    std::string cloid;
     if (m_ordersHandler) {
         clientOrderId = m_ordersHandler->lookupClientOrderIdByOid(fill.oid);
+        cloid = m_ordersHandler->lookupCloidByOid(fill.oid);
     }
 
     if (clientOrderId.empty())
@@ -178,11 +192,20 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill)
         return;
     }
 
-    emitFillExecutionReport(fill, clientOrderId);
+    emitFillExecutionReport(fill, clientOrderId, cloid);
 }
 
-void HyperliquidGWApplication::emitFillExecutionReport(const hyperliquid::Fill& fill, const std::string& clientOrderId)
+void HyperliquidGWApplication::emitFillExecutionReport(const hyperliquid::Fill& fill, const std::string& clientOrderId, const std::string& cloid)
 {
+    // Apply fill to tracked state
+    HyperliquidOrdersHandler::OrderState state{};
+    if (m_ordersHandler) {
+        state = m_ordersHandler->applyFill(cloid, fill.sz);
+    }
+
+    double leavesQty = std::max(0.0, state.origSz - state.cumQty);
+    bool isFilled = leavesQty <= 0.0;
+
     com::liversedge::messages::ExecutionReport sbeExecReport;
     if (!m_sbeWriter.prepareMessage(sbeExecReport))
     {
@@ -194,23 +217,34 @@ void HyperliquidGWApplication::emitFillExecutionReport(const hyperliquid::Fill& 
 
     sbeExecReport.timestamp(timestamp);
     sbeExecReport.transactTime(fill.time * 1000000ULL); // ms -> ns
-    sbeExecReport.securityId(m_refDataHolder.getSecurityIdBySymbol(fill.coin));
-    sbeExecReport.ordStatus(com::liversedge::messages::OrdStatus::PARTIALLY_FILLED);
+    sbeExecReport.securityId(state.securityId ? state.securityId : m_refDataHolder.getSecurityIdBySymbol(fill.coin));
+    sbeExecReport.ordStatus(isFilled
+        ? com::liversedge::messages::OrdStatus::FILLED
+        : com::liversedge::messages::OrdStatus::PARTIALLY_FILLED);
     sbeExecReport.side(mapSide(fill.side));
     sbeExecReport.orderType(com::liversedge::messages::OrderType::LIMIT);
     sbeExecReport.ordRejReason(com::liversedge::messages::OrdRejReason::NO_REJECT);
 
     SBEUtils::setPrice(sbeExecReport.lastPx(), std::to_string(fill.px));
     SBEUtils::setQty(sbeExecReport.lastQty(), std::to_string(fill.sz));
+    SBEUtils::setQty(sbeExecReport.orderQty(), std::to_string(state.origSz));
+    SBEUtils::setQty(sbeExecReport.cumQty(), std::to_string(state.cumQty));
+    SBEUtils::setQty(sbeExecReport.leavesQty(), std::to_string(leavesQty));
 
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), "");
 
-    spdlog::info("Sending SBE Fill ExecutionReport clientOrderId={} securityId={} side={} lastPx={} lastQty={}",
-                 clientOrderId, m_refDataHolder.getSecurityIdBySymbol(fill.coin),
-                 fill.side, fill.px, fill.sz);
+    spdlog::info("Sending SBE Fill ExecutionReport clientOrderId={} securityId={} ordStatus={} side={} lastPx={} lastQty={} cumQty={} leavesQty={} orderQty={}",
+                 clientOrderId, sbeExecReport.securityId(),
+                 isFilled ? "FILLED" : "PARTIALLY_FILLED",
+                 fill.side, fill.px, fill.sz, state.cumQty, leavesQty, state.origSz);
     m_sbeWriter.writeMessage(sbeExecReport);
+
+    // Clean up on full fill
+    if (isFilled && m_ordersHandler) {
+        m_ordersHandler->removeOrder(cloid);
+    }
 }
 
 // RestEndpointListener
@@ -439,12 +473,14 @@ void HyperliquidGWApplication::replayBufferedFills(uint64_t oid)
         if (it->fill.oid == oid)
         {
             std::string clientOrderId;
+            std::string cloid;
             if (m_ordersHandler) {
                 clientOrderId = m_ordersHandler->lookupClientOrderIdByOid(oid);
+                cloid = m_ordersHandler->lookupCloidByOid(oid);
             }
             spdlog::info("Replaying buffered fill oid={} clientOrderId={} px={} sz={}",
                          oid, clientOrderId, it->fill.px, it->fill.sz);
-            emitFillExecutionReport(it->fill, clientOrderId);
+            emitFillExecutionReport(it->fill, clientOrderId, cloid);
             it = m_bufferedFills.erase(it);
         }
         else

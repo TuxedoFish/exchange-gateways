@@ -106,6 +106,16 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     }
 
     // Open/Canceled/Rejected/MarginCanceled/OracleRejected — emit ER
+    std::string clientOrderId;
+    if (m_ordersHandler) {
+        clientOrderId = m_ordersHandler->lookupClientOrderId(update.cloid);
+    }
+
+    if (clientOrderId.empty()) {
+        spdlog::info("Skipping OrderUpdate ER for cloid={} - order already handled/removed", update.cloid);
+        return;
+    }
+
     com::liversedge::messages::ExecutionReport sbeExecReport;
     if (!m_sbeWriter.prepareMessage(sbeExecReport))
     {
@@ -132,16 +142,6 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
 
     double cumQty = update.origSz - update.sz;
     SBEUtils::setQty(sbeExecReport.cumQty(), std::to_string(cumQty));
-
-    std::string clientOrderId;
-    if (m_ordersHandler) {
-        clientOrderId = m_ordersHandler->lookupClientOrderId(update.cloid);
-    }
-
-    if (clientOrderId.empty()) {
-        spdlog::info("Skipping OrderUpdate ER for cloid={} - order already handled/removed", update.cloid);
-        return;
-    }
 
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);

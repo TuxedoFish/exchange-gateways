@@ -256,6 +256,7 @@ void HyperliquidOrdersHandler::initOrderState(const std::string& cloid, double o
 {
     auto& state = m_cloidToState[cloid];
     state.origSz = origSz;
+    state.cumQty = 0.0;       // Reset — each OPEN starts a fresh fill-tracking leg
     state.securityId = securityId;
 }
 

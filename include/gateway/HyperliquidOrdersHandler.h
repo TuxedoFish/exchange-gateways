@@ -63,7 +63,9 @@ private:
     void sendCancelReject(com::liversedge::messages::CancelOrder& cancelOrder);
     void sendNewOrderReject(com::liversedge::messages::NewOrder& newOrder);
 
-    static hyperliquid::Tif mapOrderTypeToTif(com::liversedge::messages::OrderType::Value orderType);
+    static hyperliquid::Tif mapTif(com::liversedge::messages::TimeInForce::Value timeInForce,
+                                   com::liversedge::messages::OrderType::Value orderType,
+                                   std::uint8_t isPostOnly);
 
     // Bidirectional mapping: internal clientOrderId <-> Hyperliquid cloid
     std::unordered_map<std::string, std::string> m_clientToCloid;

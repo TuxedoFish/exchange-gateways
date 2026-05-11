@@ -57,7 +57,7 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         order.price = std::stod(price.str(8, std::ios_base::fixed));
         order.size = std::stod(quantity.str(8, std::ios_base::fixed));
         order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{mapOrderTypeToTif(decoder.orderType())};
+        order.limit = hyperliquid::LimitOrderType{mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly())};
         std::string cloid = hyperliquid::generateCloid();
         m_clientToCloid[clientOrderId] = cloid;
         m_cloidToClient[cloid] = clientOrderId;
@@ -121,7 +121,7 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         order.price = price.convert_to<double>();
         order.size = quantity.convert_to<double>();
         order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{mapOrderTypeToTif(decoder.orderType())};
+        order.limit = hyperliquid::LimitOrderType{mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly())};
         order.cloid = cloid;
 
         hyperliquid::ModifyRequest modify;
@@ -298,14 +298,15 @@ void HyperliquidOrdersHandler::removeOrder(const std::string& cloid)
     }
 }
 
-hyperliquid::Tif HyperliquidOrdersHandler::mapOrderTypeToTif(com::liversedge::messages::OrderType::Value orderType)
+hyperliquid::Tif HyperliquidOrdersHandler::mapTif(com::liversedge::messages::TimeInForce::Value timeInForce,
+                                                   com::liversedge::messages::OrderType::Value orderType,
+                                                   std::uint8_t isPostOnly)
 {
-    switch (orderType)
-    {
-    case com::liversedge::messages::OrderType::MARKET:
+    if (orderType == com::liversedge::messages::OrderType::MARKET) {
         return hyperliquid::Tif::Ioc;
-    case com::liversedge::messages::OrderType::LIMIT:
-    default:
+    }
+    if (isPostOnly) {
         return hyperliquid::Tif::Alo;
     }
+    return hyperliquid::Tif::Gtc;
 }

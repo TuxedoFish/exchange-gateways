@@ -96,13 +96,9 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
                      update.oid, update.cloid, hyperliquid::toString(update.status));
         return;
     } else if (update.status == hyperliquid::OrderStatus::Filled) {
-        // Fill ER already sent via onUserFill path
-        spdlog::info("OrderUpdate Filled oid={} cloid={} - cleanup only (fill ER from onUserFill)",
+        spdlog::info("OrderUpdate Filled oid={} cloid={} - no-op (cleanup via fill path)",
                      update.oid, update.cloid);
-        if (m_ordersHandler) {
-            m_ordersHandler->removeOrder(update.cloid);
-        }
-        return;  // no ER for Filled
+        return;
     }
 
     // Open/Canceled/Rejected/MarginCanceled/OracleRejected — emit ER

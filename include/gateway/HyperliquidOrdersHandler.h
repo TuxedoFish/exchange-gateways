@@ -48,9 +48,14 @@ public:
         double origSz = 0.0;
         double cumQty = 0.0;
         std::int32_t securityId = 0;
+        com::liversedge::messages::OrderType::Value orderType = com::liversedge::messages::OrderType::LIMIT;
+        com::liversedge::messages::OrderType::Value pendingOrderType = com::liversedge::messages::OrderType::LIMIT;
     };
 
     void initOrderState(const std::string& cloid, double origSz, std::int32_t securityId);
+    void setPendingOrderType(const std::string& cloid, com::liversedge::messages::OrderType::Value orderType);
+    void commitPendingOrderType(const std::string& cloid);
+    com::liversedge::messages::OrderType::Value getOrderType(const std::string& cloid) const;
     OrderState applyFill(const std::string& cloid, double fillSz);
     std::string lookupCloidByOid(uint64_t oid) const;
 

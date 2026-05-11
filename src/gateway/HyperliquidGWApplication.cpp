@@ -89,6 +89,7 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
             m_ordersHandler->setActiveOid(update.oid, update.cloid);
             m_ordersHandler->initOrderState(update.cloid, update.origSz,
                                             m_refDataHolder.getSecurityIdBySymbol(update.coin));
+            m_ordersHandler->commitPendingOrderType(update.cloid);
         }
         // Fall through to emit NEW ER as ack, then replay buffered fills
     } else if (m_ordersHandler && !m_ordersHandler->isActiveOid(update.oid, update.cloid)) {
@@ -126,7 +127,7 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     sbeExecReport.securityId(m_refDataHolder.getSecurityIdBySymbol(update.coin));
     sbeExecReport.ordStatus(mapOrderStatus(update.status));
     sbeExecReport.side(mapSide(update.side));
-    sbeExecReport.orderType(com::liversedge::messages::OrderType::LIMIT);
+    sbeExecReport.orderType(m_ordersHandler ? m_ordersHandler->getOrderType(update.cloid) : com::liversedge::messages::OrderType::LIMIT);
     sbeExecReport.ordRejReason(
         (update.status == hyperliquid::OrderStatus::Rejected || update.status == hyperliquid::OrderStatus::OracleRejected)
             ? com::liversedge::messages::OrdRejReason::OTHER
@@ -218,7 +219,7 @@ void HyperliquidGWApplication::emitFillExecutionReport(const hyperliquid::Fill& 
         ? com::liversedge::messages::OrdStatus::FILLED
         : com::liversedge::messages::OrdStatus::PARTIALLY_FILLED);
     sbeExecReport.side(mapSide(fill.side));
-    sbeExecReport.orderType(com::liversedge::messages::OrderType::LIMIT);
+    sbeExecReport.orderType(state.orderType);
     sbeExecReport.ordRejReason(com::liversedge::messages::OrdRejReason::NO_REJECT);
 
     SBEUtils::setPrice(sbeExecReport.lastPx(), std::to_string(fill.px));

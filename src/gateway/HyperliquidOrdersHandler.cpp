@@ -62,6 +62,8 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         m_clientToCloid[clientOrderId] = cloid;
         m_cloidToClient[cloid] = clientOrderId;
         m_cloidToAsset[cloid] = assetInfo;
+        setPendingOrderType(cloid, decoder.orderType());
+        commitPendingOrderType(cloid);
         order.cloid = cloid;
 
         spdlog::info("Sending placeOrder {} cloid={} ({}) price={} size={}",
@@ -123,6 +125,7 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         order.reduceOnly = false;
         order.limit = hyperliquid::LimitOrderType{mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly())};
         order.cloid = cloid;
+        setPendingOrderType(cloid, decoder.orderType());
 
         hyperliquid::ModifyRequest modify;
         modify.cloid = cloid;
@@ -258,6 +261,28 @@ void HyperliquidOrdersHandler::initOrderState(const std::string& cloid, double o
     state.origSz = origSz;
     state.cumQty = 0.0;       // Reset — each OPEN starts a fresh fill-tracking leg
     state.securityId = securityId;
+}
+
+void HyperliquidOrdersHandler::setPendingOrderType(const std::string& cloid, com::liversedge::messages::OrderType::Value orderType)
+{
+    m_cloidToState[cloid].pendingOrderType = orderType;
+}
+
+void HyperliquidOrdersHandler::commitPendingOrderType(const std::string& cloid)
+{
+    auto it = m_cloidToState.find(cloid);
+    if (it != m_cloidToState.end()) {
+        it->second.orderType = it->second.pendingOrderType;
+    }
+}
+
+com::liversedge::messages::OrderType::Value HyperliquidOrdersHandler::getOrderType(const std::string& cloid) const
+{
+    auto it = m_cloidToState.find(cloid);
+    if (it != m_cloidToState.end()) {
+        return it->second.orderType;
+    }
+    return com::liversedge::messages::OrderType::LIMIT;
 }
 
 HyperliquidOrdersHandler::OrderState HyperliquidOrdersHandler::applyFill(const std::string& cloid, double fillSz)

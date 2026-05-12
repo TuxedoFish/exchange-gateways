@@ -464,26 +464,56 @@ void HyperliquidGWApplication::sendCancelReject(const std::string& cloid, std::i
 
 void HyperliquidGWApplication::replayBufferedFills(uint64_t oid)
 {
-    auto it = m_bufferedFills.begin();
-    while (it != m_bufferedFills.end())
+    // Collect all buffered fills for this oid first, so we can adjust
+    // origSz before replaying.  Hyperliquid may split a single IOC into
+    // multiple sub-orders that share the same oid/cloid; each sub-order
+    // reports its own origSz, but the fills cover the aggregate quantity.
+    // Without this, the first sub-order's origSz triggers a premature
+    // "filled" cleanup and the remaining fills lose their cloid mapping.
+    std::vector<hyperliquid::Fill> fills;
+    for (auto it = m_bufferedFills.begin(); it != m_bufferedFills.end(); )
     {
         if (it->fill.oid == oid)
         {
-            std::string clientOrderId;
-            std::string cloid;
-            if (m_ordersHandler) {
-                clientOrderId = m_ordersHandler->lookupClientOrderIdByOid(oid);
-                cloid = m_ordersHandler->lookupCloidByOid(oid);
-            }
-            spdlog::info("Replaying buffered fill oid={} clientOrderId={} px={} sz={}",
-                         oid, clientOrderId, it->fill.px, it->fill.sz);
-            emitFillExecutionReport(it->fill, clientOrderId, cloid);
+            fills.push_back(it->fill);
             it = m_bufferedFills.erase(it);
         }
         else
         {
             ++it;
         }
+    }
+
+    if (fills.empty()) return;
+
+    // If total buffered fill size exceeds the current origSz, adjust it
+    // so cumQty tracking doesn't trigger premature cleanup.
+    if (m_ordersHandler) {
+        double totalFillSz = 0.0;
+        for (const auto& f : fills) totalFillSz += f.sz;
+
+        std::string cloid = m_ordersHandler->lookupCloidByOid(oid);
+        if (!cloid.empty()) {
+            auto state = m_ordersHandler->getOrderState(cloid);
+            if (state && totalFillSz > state->origSz) {
+                spdlog::info("Adjusting origSz for cloid={} from {} to {} (IOC split, {} buffered fills)",
+                             cloid, state->origSz, totalFillSz, fills.size());
+                m_ordersHandler->initOrderState(cloid, totalFillSz, state->securityId);
+            }
+        }
+    }
+
+    for (const auto& fill : fills)
+    {
+        std::string clientOrderId;
+        std::string cloid;
+        if (m_ordersHandler) {
+            clientOrderId = m_ordersHandler->lookupClientOrderIdByOid(oid);
+            cloid = m_ordersHandler->lookupCloidByOid(oid);
+        }
+        spdlog::info("Replaying buffered fill oid={} clientOrderId={} px={} sz={}",
+                     oid, clientOrderId, fill.px, fill.sz);
+        emitFillExecutionReport(fill, clientOrderId, cloid);
     }
 }
 

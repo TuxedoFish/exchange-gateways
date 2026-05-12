@@ -53,6 +53,7 @@ public:
     };
 
     void initOrderState(const std::string& cloid, double origSz, std::int32_t securityId);
+    const OrderState* getOrderState(const std::string& cloid) const;
     void setPendingOrderType(const std::string& cloid, com::liversedge::messages::OrderType::Value orderType);
     void commitPendingOrderType(const std::string& cloid);
     com::liversedge::messages::OrderType::Value getOrderType(const std::string& cloid) const;

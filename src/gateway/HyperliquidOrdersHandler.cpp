@@ -56,8 +56,9 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         order.isBuy = (side == com::liversedge::messages::Side::BUY);
         order.price = std::stod(price.str(8, std::ios_base::fixed));
         order.size = std::stod(quantity.str(8, std::ios_base::fixed));
-        order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly())};
+        auto tif = mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly());
+        order.reduceOnly = (tif == hyperliquid::Tif::Ioc);
+        order.limit = hyperliquid::LimitOrderType{tif};
         std::string cloid = hyperliquid::generateCloid();
         m_clientToCloid[clientOrderId] = cloid;
         m_cloidToClient[cloid] = clientOrderId;
@@ -122,8 +123,9 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         order.isBuy = (side == com::liversedge::messages::Side::BUY);
         order.price = price.convert_to<double>();
         order.size = quantity.convert_to<double>();
-        order.reduceOnly = false;
-        order.limit = hyperliquid::LimitOrderType{mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly())};
+        auto tif = mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly());
+        order.reduceOnly = (tif == hyperliquid::Tif::Ioc);
+        order.limit = hyperliquid::LimitOrderType{tif};
         order.cloid = cloid;
         setPendingOrderType(cloid, decoder.orderType());
 
@@ -261,6 +263,15 @@ void HyperliquidOrdersHandler::initOrderState(const std::string& cloid, double o
     state.origSz = origSz;
     state.cumQty = 0.0;       // Reset — each OPEN starts a fresh fill-tracking leg
     state.securityId = securityId;
+}
+
+const HyperliquidOrdersHandler::OrderState* HyperliquidOrdersHandler::getOrderState(const std::string& cloid) const
+{
+    auto it = m_cloidToState.find(cloid);
+    if (it != m_cloidToState.end()) {
+        return &it->second;
+    }
+    return nullptr;
 }
 
 void HyperliquidOrdersHandler::setPendingOrderType(const std::string& cloid, com::liversedge::messages::OrderType::Value orderType)

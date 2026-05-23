@@ -2,6 +2,7 @@
 #include "../../include/marketdata/HyperliquidMDApplicationBase.h"
 #include "../../include/sbe/SBEUtils.h"
 #include <spdlog/spdlog.h>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -38,6 +39,11 @@ void HyperliquidMessageProcessor::setDesiredCoins(const std::set<std::string>& d
     m_desiredCoins = desiredCoins;
 }
 
+void HyperliquidMessageProcessor::setHistoricalMode(bool enabled)
+{
+    m_historicalMode = enabled;
+}
+
 void HyperliquidMessageProcessor::onConnected()
 {
     if (getConnectionStatus() == com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
@@ -46,9 +52,18 @@ void HyperliquidMessageProcessor::onConnected()
         invalidateState(0);
     }
 
-    // Track connection time in UTC millis (same epoch as Hyperliquid timestamps)
-    auto now = std::chrono::system_clock::now();
-    m_connectedTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    if (!m_historicalMode)
+    {
+        // Track connection time in UTC millis (same epoch as Hyperliquid timestamps)
+        auto now = std::chrono::system_clock::now();
+        m_connectedTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    }
+    else
+    {
+        // In historical mode, don't use wall-clock time — it would cause all
+        // historical messages to be rejected as stale
+        m_connectedTimeMs = 0;
+    }
 
     updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::STARTING, 0);
 }
@@ -328,11 +343,13 @@ void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& sn
     {
         if (snapshot.numBids > 0)
         {
-            emitSecurityDefinition(pendingIt->second, std::stod(snapshot.bids[0].px));
+            double px; std::from_chars(snapshot.bids[0].px.data(), snapshot.bids[0].px.data() + snapshot.bids[0].px.size(), px);
+            emitSecurityDefinition(pendingIt->second, px);
         }
         else if (snapshot.numAsks > 0)
         {
-            emitSecurityDefinition(pendingIt->second, std::stod(snapshot.asks[0].px));
+            double px; std::from_chars(snapshot.asks[0].px.data(), snapshot.asks[0].px.data() + snapshot.asks[0].px.size(), px);
+            emitSecurityDefinition(pendingIt->second, px);
         }
         m_pendingSecDefs.erase(pendingIt);
     }

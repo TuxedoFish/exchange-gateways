@@ -22,6 +22,7 @@ public:
     void onTrade(const hyperliquid::Trade& trade);
 
     void setDesiredCoins(const std::set<std::string>& desiredCoins);
+    void setHistoricalMode(bool enabled);
 
     bool hasExpiredOutcomes() const;
     void removeExpiredOutcomes();
@@ -62,4 +63,5 @@ private:
     uint64_t m_metaReceivedTimeMs{0};
     std::chrono::system_clock::time_point m_lastOutcomeExpiry{};
     bool m_pendingRefetch{false};
+    bool m_historicalMode{false};
 };

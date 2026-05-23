@@ -1,108 +1,7 @@
 #include "../../include/historical/MarketdataHistoricalRunner.h"
 #include <spdlog/spdlog.h>
 
-MarketdataHistoricalRunner::MarketdataHistoricalRunner(SimpleConfig& config) : config_{ config } {
-}
-
-std::string MarketdataHistoricalRunner::getMonthDayString(int dayOrMonth) {
-    if (dayOrMonth > 9) {
-        return std::to_string(dayOrMonth);
-    }
-    else {
-        return "0" + std::to_string(dayOrMonth);
-    }
-}
-
-std::string MarketdataHistoricalRunner::findValidFilePath(const std::string& rawFixCapturesLoc, tm& currentDate) {
-    std::string datePath = std::to_string(1900 + currentDate.tm_year)
-        + kPathSeparator + getMonthDayString(currentDate.tm_mon + 1)
-        + kPathSeparator + getMonthDayString(currentDate.tm_mday);
-    std::string filePath = rawFixCapturesLoc + kPathSeparator + datePath + ".txt";
-
-    if (!boost::filesystem::exists(filePath)) {
-        if (currentDate.tm_mday < 28) {
-            return ""; // Signal file not found
-        }
-
-        // Try the next month / year
-        currentDate.tm_mday = 1;
-        currentDate.tm_mon += 1;
-        if (currentDate.tm_mon > 11) {
-            currentDate.tm_mon = 0; // Reset to January
-            currentDate.tm_year += 1;
-        }
-        datePath = std::to_string(1900 + currentDate.tm_year)
-            + kPathSeparator + getMonthDayString(currentDate.tm_mon + 1)
-            + kPathSeparator + getMonthDayString(currentDate.tm_mday);
-        filePath = rawFixCapturesLoc + kPathSeparator + datePath + ".txt";
-    }
-
-    return filePath;
-}
-
-size_t MarketdataHistoricalRunner::countTotalLines(const char* data, const char* end) {
-    size_t totalLines = 0;
-    const char* countPtr = data;
-    while (countPtr < end) {
-        if (*countPtr == '\n') totalLines++;
-        countPtr++;
-    }
-    return totalLines;
-}
-
-std::string MarketdataHistoricalRunner::getStringSafe(const char* data, size_t size) {
-    std::string msgStr(data, size);
-
-    bool hasNullBytes = false;
-    std::string cleanedMsgStr;
-
-    for (char c : msgStr) {
-        if (c == '\0') {
-            hasNullBytes = true;
-        } else {
-            cleanedMsgStr += c;
-        }
-    }
-
-    if (hasNullBytes) {
-        spdlog::error("WARNING: Null bytes detected in message. Original length: {}, cleaned length: {} - DISCARDING MESSAGE due to corruption", msgStr.size(), cleanedMsgStr.size());
-        std::string preview;
-        for (char c : cleanedMsgStr) {
-            if (c == '\x01') preview += "[SOH]";
-            else if (std::isprint(c)) preview += c;
-            else preview += "[" + std::to_string(static_cast<int>(c)) + "]";
-        }
-        spdlog::error("Corrupted message preview: {}", preview);
-        return "";
-    }
-
-    return msgStr;
-}
-
-void MarketdataHistoricalRunner::logProgress(size_t processedLines, size_t totalLines,
-                                             const std::chrono::steady_clock::time_point& startTime,
-                                             std::chrono::steady_clock::time_point& lastProgressTime) {
-    auto currentTime = std::chrono::steady_clock::now();
-    auto timeSinceLastProgress = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastProgressTime).count();
-
-    if (timeSinceLastProgress >= 5) {
-        double progressPercent = (static_cast<double>(processedLines) / totalLines) * 100.0;
-        auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(currentTime - startTime).count();
-
-        if (progressPercent > 0) {
-            double estimatedTotalSeconds = (elapsedTime * 100.0) / progressPercent;
-            double remainingSeconds = estimatedTotalSeconds - elapsedTime;
-
-            int remainingHours = static_cast<int>(remainingSeconds) / 3600;
-            int remainingMinutes = (static_cast<int>(remainingSeconds) % 3600) / 60;
-            int remainingSecs = static_cast<int>(remainingSeconds) % 60;
-
-            spdlog::info("Progress: {:.2f}% ({}/{} lines) - Estimated time remaining: {}h {}m {}s",
-                         progressPercent, processedLines, totalLines, remainingHours, remainingMinutes, remainingSecs);
-        }
-
-        lastProgressTime = currentTime;
-    }
+MarketdataHistoricalRunner::MarketdataHistoricalRunner(SimpleConfig& config) : MarketdataHistoricalRunnerBase(config) {
 }
 
 int MarketdataHistoricalRunner::run() {
@@ -125,9 +24,12 @@ int MarketdataHistoricalRunner::run() {
     DeribitMessageProcessor processor{ writer };
     FileMessageProcessor historicalProcessor{ dataDictionaryLoc, processor, writer };
 
+    auto processLine = [&](std::string_view msgStr) {
+        historicalProcessor.process(std::string(msgStr));
+    };
+
     if (!config_.getBool("from_start"))
     {
-        // TODO: Handle month/year rollover properly
         // Check for previous day file and prime state if needed
         tm previousDate = startDate;
         previousDate.tm_mday -= 1;
@@ -171,7 +73,7 @@ int MarketdataHistoricalRunner::run() {
             }
 
             if (foundLogon) {
-                readFrom(replayFrom, end, historicalProcessor, linesToReplay);
+                readFrom(replayFrom, end, processLine);
             } else {
                 spdlog::error("No logon message found in previous day file");
                 return 0;
@@ -212,14 +114,10 @@ int MarketdataHistoricalRunner::run() {
         const char* data = file.data();
         const char* end = data + file.size();
 
-        // Count total lines for progress tracking
-        size_t totalLines = countTotalLines(data, end);
-        spdlog::info("Total lines to process: {}", totalLines);
-
         const char* lineStart = data;
 
         auto startTime = std::chrono::steady_clock::now();
-        readFrom(lineStart, end, historicalProcessor, totalLines);
+        readFrom(lineStart, end, processLine);
         auto endTime = std::chrono::steady_clock::now();
 
         // Log completion for this file
@@ -239,63 +137,4 @@ int MarketdataHistoricalRunner::run() {
 
     // Cleanup
     return 0;
-}
-
-void MarketdataHistoricalRunner::readFrom(const char* lineStart, const char* end, FileMessageProcessor& historicalProcessor, int totalLines)
-{
-    // Progress tracking variables
-    auto startTime = std::chrono::steady_clock::now();
-    auto lastProgressTime = startTime;
-    size_t processedLines = 0;
-
-    while (lineStart < end) {
-        const char* lineEnd = std::find(lineStart, end, '\n');
-
-        if (lineEnd == lineStart) {
-            lineStart++;
-            continue;
-        }
-
-        processedLines++;
-
-        const char* pipePos = std::find(lineStart, lineEnd, '|');
-        if (pipePos != lineEnd) {
-            // Find the actual end of the message data (before \r\n)
-            const char* msgEnd = lineEnd;
-
-            // Back up past any \r characters (Windows)
-            while (msgEnd > pipePos + 1 && *(msgEnd - 1) == '\r') {
-                msgEnd--;
-            }
-
-            // Create string_view that preserves binary data including SOH
-
-            // Convert to string while checking for null bytes and filtering them
-            std::string msgStr = getStringSafe(pipePos + 1, msgEnd - pipePos - 1);
-
-            // Skip processing if message was corrupted (contains null bytes)
-            if (msgStr.empty()) {
-                lineStart = lineEnd + 1;
-                continue;
-            }
-
-            try {
-                historicalProcessor.process(msgStr);
-            }
-            catch (const std::exception& e) {
-                spdlog::error("FIX parsing error: {}", e.what());
-                std::string msgPreview;
-                for (char c : msgStr) {
-                    if (c == '\x01') msgPreview += "[SOH]";
-                    else if (std::isprint(c)) msgPreview += c;
-                    else msgPreview += "[" + std::to_string(static_cast<int>(c)) + "]";
-                }
-                spdlog::error("Message was: {}", msgPreview);
-            }
-        }
-
-        logProgress(processedLines, totalLines, startTime, lastProgressTime);
-
-        lineStart = lineEnd + 1;
-    }
 }

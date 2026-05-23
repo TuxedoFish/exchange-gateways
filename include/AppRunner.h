@@ -39,6 +39,7 @@ public:
 	int runMarketdata();
 	int runGateway();
 	int runProcessRawMarketdata();
+	int runProcessRawHyperliquidMarketdata();
 	int runMarketdataHistoricalStorage();
 private:
 	SimpleConfig& config_;

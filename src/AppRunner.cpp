@@ -5,6 +5,7 @@
 #include "../include/sbe/SBEBinaryWriter.h"
 #include "../include/util/ConsoleUtils.h"
 #include "../include/util/SimpleConfig.h"
+#include "../include/historical/HyperliquidHistoricalRunner.h"
 
 AppRunner::AppRunner(SimpleConfig& config) : config_{config}
 {
@@ -82,7 +83,20 @@ int AppRunner::runGateway()
 
 int AppRunner::runProcessRawMarketdata()
 {
+    std::string exchangeName = config_.getString("exchange_name", "deribit");
+
+    if (exchangeName == "hyperliquid")
+    {
+        return runProcessRawHyperliquidMarketdata();
+    }
+
     MarketdataHistoricalRunner runner(config_);
+    return runner.run();
+}
+
+int AppRunner::runProcessRawHyperliquidMarketdata()
+{
+    HyperliquidHistoricalRunner runner(config_);
     return runner.run();
 }
 

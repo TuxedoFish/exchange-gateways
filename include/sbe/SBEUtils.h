@@ -16,6 +16,7 @@
 #include "quickfix/Fields.h"
 
 #include <sstream>
+#include <string_view>
 
 #define HEADER_LENGTH 8
 
@@ -54,8 +55,8 @@ public:
     }
 
     // Setting SBE
-    static void setQty(com::liversedge::messages::Qty& field, const std::string& value);
-    static void setPrice(com::liversedge::messages::Price& field, const std::string& value);
+    static void setQty(com::liversedge::messages::Qty& field, std::string_view value);
+    static void setPrice(com::liversedge::messages::Price& field, std::string_view value);
     static void setDate(com::liversedge::messages::Date& field, const std::string& value);
 
     /**
@@ -77,7 +78,7 @@ public:
 
     // Buffer access helpers
     static std::int64_t getInt64(const char* buffer, std::size_t offset);
-    static int64_t stringToMantissa(const std::string& str, int8_t exponent = -8);
+    static int64_t stringToMantissa(std::string_view str, int8_t exponent = -8);
     static int64_t powerOfTenMantissa(int decimals, int8_t exponent);
 
     // SBE -> Internal

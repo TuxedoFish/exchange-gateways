@@ -6,28 +6,85 @@
 
 using namespace com::liversedge::messages;
 
-int64_t SBEUtils::stringToMantissa(const std::string& str, int8_t exponent)
+static constexpr int64_t kPow10[] = {
+    1LL,
+    10LL,
+    100LL,
+    1000LL,
+    10000LL,
+    100000LL,
+    1000000LL,
+    10000000LL,
+    100000000LL,
+    1000000000LL,
+    10000000000LL,
+    100000000000LL,
+    1000000000000LL,
+    10000000000000LL,
+    100000000000000LL,
+    1000000000000000LL,
+    10000000000000000LL,
+    100000000000000000LL,
+    1000000000000000000LL,
+};
+
+int64_t SBEUtils::stringToMantissa(std::string_view str, int8_t exponent)
 {
-    Dec value(str);
-    Dec scale = pow(Dec(10), -exponent);
-    return static_cast<int64_t>(value * scale);
+    const int scale = -exponent;
+    const char* p = str.data();
+    const char* end = p + str.size();
+
+    bool negative = false;
+    if (p < end && *p == '-') {
+        negative = true;
+        p++;
+    }
+
+    // Parse integer part
+    int64_t intPart = 0;
+    while (p < end && *p >= '0' && *p <= '9') {
+        intPart = intPart * 10 + (*p - '0');
+        p++;
+    }
+
+    // Parse fractional part (up to 'scale' digits)
+    int64_t fracPart = 0;
+    int fracDigits = 0;
+    if (p < end && *p == '.') {
+        p++;
+        while (p < end && *p >= '0' && *p <= '9' && fracDigits < scale) {
+            fracPart = fracPart * 10 + (*p - '0');
+            fracDigits++;
+            p++;
+        }
+    }
+
+    // Pad fractional part to fill remaining decimal places
+    if (fracDigits < scale) {
+        fracPart *= kPow10[scale - fracDigits];
+    }
+
+    int64_t mantissa = intPart * kPow10[scale] + fracPart;
+    return negative ? -mantissa : mantissa;
 }
 
 int64_t SBEUtils::powerOfTenMantissa(int decimals, int8_t exponent)
 {
-    Dec value = pow(Dec(10), -decimals);
-    Dec scale = pow(Dec(10), -exponent);
-    return static_cast<int64_t>(value * scale);
+    int power = -decimals + (-exponent);
+    if (power >= 0 && power < 19) {
+        return kPow10[power];
+    }
+    return 0;
 }
 
 // setVarString is now a template in the header file
 
-void SBEUtils::setQty(Qty& field, const std::string& value)
+void SBEUtils::setQty(Qty& field, std::string_view value)
 {
     field.mantissa(stringToMantissa(value, -8));
 }
 
-void SBEUtils::setPrice(Price& field, const std::string& value)
+void SBEUtils::setPrice(Price& field, std::string_view value)
 {
     field.mantissa(stringToMantissa(value, -8));
 }

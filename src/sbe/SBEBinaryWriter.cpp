@@ -64,6 +64,13 @@ const std::string& SBEBinaryWriter::getFilename() const { return filename_; }
 // Check if file is open and ready
 bool SBEBinaryWriter::isOpen() const { return file_.is_open(); }
 
+void SBEBinaryWriter::setBatchMode(bool enabled) { batchMode_ = enabled; }
+
+void SBEBinaryWriter::flushNow() {
+    std::lock_guard<std::mutex> lock(writeMutex_);
+    flush();
+}
+
 // Private flush to disk - called only while mutex is held
 void SBEBinaryWriter::flush() {
     if (file_.is_open()) {

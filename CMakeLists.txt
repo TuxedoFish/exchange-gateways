@@ -115,8 +115,14 @@ set(HISTORICAL_SOURCES
         src/historical/HyperliquidPersister.cpp
         include/historical/FileMessageProcessor.h
         src/historical/FileMessageProcessor.cpp
+        include/historical/MarketdataHistoricalRunnerBase.h
+        src/historical/MarketdataHistoricalRunnerBase.cpp
         include/historical/MarketdataHistoricalRunner.h
         src/historical/MarketdataHistoricalRunner.cpp
+        include/historical/HyperliquidFileMessageProcessor.h
+        src/historical/HyperliquidFileMessageProcessor.cpp
+        include/historical/HyperliquidHistoricalRunner.h
+        src/historical/HyperliquidHistoricalRunner.cpp
 )
 
 # Add source to this project's executable.

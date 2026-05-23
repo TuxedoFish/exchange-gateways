@@ -18,6 +18,7 @@ private:
     size_t messageCount_;
     std::vector<char> buffer_;
     mutable std::mutex writeMutex_;
+    bool batchMode_{false};
 
     static constexpr size_t BUFFER_SIZE = 4092;
 
@@ -37,6 +38,10 @@ public:
     const std::string& getFilename() const;
     bool isOpen() const;
 
+    // Batch mode: when enabled, skip per-message flush for historical processing
+    void setBatchMode(bool enabled);
+    void flushNow();
+
 private:
     void flush(); // Private - called automatically by writeMessage()
 };
@@ -48,8 +53,10 @@ bool SBEBinaryWriter::prepareMessage(T& message) {
         // Acquire lock - will be held until writeMessage() completes
         writeMutex_.lock();
 
-        // Clear buffer
-        std::fill(buffer_.begin(), buffer_.end(), 0);
+        // Clear header + fixed-field block so unset enum/numeric fields default to 0
+        com::liversedge::messages::MessageHeader tmpHdr;
+        size_t clearSize = tmpHdr.encodedLength() + message.sbeBlockLength();
+        std::memset(buffer_.data(), 0, clearSize);
 
         // Create and encode message header
         com::liversedge::messages::MessageHeader hdr;
@@ -96,14 +103,16 @@ bool SBEBinaryWriter::writeMessage(T& message) {
             return false;
         }
 
-        // Flush data to disk first
-        file_.flush();
-
         // Write end offset to index so consumers know all data up to
-        // this point is safely committed, then flush the index
+        // this point is safely committed
         std::uint64_t endOffset = static_cast<std::uint64_t>(file_.tellp());
         indexFile_.write(reinterpret_cast<const char*>(&endOffset), sizeof(endOffset));
-        indexFile_.flush();
+
+        // Flush to disk unless in batch mode (historical processing)
+        if (!batchMode_) {
+            file_.flush();
+            indexFile_.flush();
+        }
 
         messageCount_++;
         writeMutex_.unlock(); // Release lock on success

@@ -56,15 +56,18 @@ void HyperliquidOrdersHandler::onNewOrder(com::liversedge::messages::NewOrder& d
         order.isBuy = (side == com::liversedge::messages::Side::BUY);
         order.price = std::stod(price.str(8, std::ios_base::fixed));
         order.size = std::stod(quantity.str(8, std::ios_base::fixed));
-        auto tif = mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly());
-        order.reduceOnly = (tif == hyperliquid::Tif::Ioc);
-        order.limit = hyperliquid::LimitOrderType{tif};
+        order.reduceOnly = false;
+        order.limit = hyperliquid::LimitOrderType{mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly())};
         std::string cloid = hyperliquid::generateCloid();
         m_clientToCloid[clientOrderId] = cloid;
         m_cloidToClient[cloid] = clientOrderId;
         m_cloidToAsset[cloid] = assetInfo;
         setPendingOrderType(cloid, decoder.orderType());
         commitPendingOrderType(cloid);
+        m_cloidToState[cloid].requestedQty = order.size;
+        m_cloidToState[cloid].side = side;
+        m_cloidToState[cloid].isIoc = (mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly()) == hyperliquid::Tif::Ioc);
+        m_cloidToState[cloid].createdAt = std::chrono::steady_clock::now();
         order.cloid = cloid;
 
         spdlog::info("Sending placeOrder {} cloid={} ({}) price={} size={}",
@@ -123,11 +126,14 @@ void HyperliquidOrdersHandler::onAmendOrder(com::liversedge::messages::AmendOrde
         order.isBuy = (side == com::liversedge::messages::Side::BUY);
         order.price = price.convert_to<double>();
         order.size = quantity.convert_to<double>();
-        auto tif = mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly());
-        order.reduceOnly = (tif == hyperliquid::Tif::Ioc);
-        order.limit = hyperliquid::LimitOrderType{tif};
+        order.reduceOnly = false;
+        order.limit = hyperliquid::LimitOrderType{mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly())};
         order.cloid = cloid;
         setPendingOrderType(cloid, decoder.orderType());
+        m_cloidToState[cloid].requestedQty = order.size;
+        m_cloidToState[cloid].side = side;
+        m_cloidToState[cloid].isIoc = (mapTif(decoder.timeInForce(), decoder.orderType(), decoder.isPostOnly()) == hyperliquid::Tif::Ioc);
+        m_cloidToState[cloid].createdAt = std::chrono::steady_clock::now();
 
         hyperliquid::ModifyRequest modify;
         modify.cloid = cloid;
@@ -260,8 +266,11 @@ bool HyperliquidOrdersHandler::isActiveOid(uint64_t oid, const std::string& cloi
 void HyperliquidOrdersHandler::initOrderState(const std::string& cloid, double origSz, std::int32_t securityId)
 {
     auto& state = m_cloidToState[cloid];
-    state.origSz = origSz;
-    state.cumQty = 0.0;       // Reset — each OPEN starts a fresh fill-tracking leg
+    // For IOC orders, Hyperliquid may split into sub-orders with smaller origSz.
+    // Use the strategy's requested qty when it's larger.
+    state.origSz = (state.requestedQty > 0.0 && state.requestedQty > origSz)
+                   ? state.requestedQty : origSz;
+    state.cumQty = 0.0;
     state.securityId = securityId;
 }
 

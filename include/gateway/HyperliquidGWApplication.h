@@ -102,6 +102,8 @@ private:
     std::vector<BufferedFill> m_bufferedFills;
 
     void replayBufferedFills(uint64_t oid);
-    void checkBufferedFillTimeouts();
+    void checkTimeouts();
     void emitFillExecutionReport(const hyperliquid::Fill& fill, const std::string& clientOrderId, const std::string& cloid);
+
+    int m_iocTimeoutSecs = 5;
 };

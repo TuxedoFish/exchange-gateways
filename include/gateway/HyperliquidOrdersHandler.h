@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <iostream>
 #include <unordered_map>
@@ -47,9 +48,13 @@ public:
     {
         double origSz = 0.0;
         double cumQty = 0.0;
+        double requestedQty = 0.0;  // qty from strategy's NewOrder/AmendOrder
         std::int32_t securityId = 0;
         com::liversedge::messages::OrderType::Value orderType = com::liversedge::messages::OrderType::LIMIT;
         com::liversedge::messages::OrderType::Value pendingOrderType = com::liversedge::messages::OrderType::LIMIT;
+        com::liversedge::messages::Side::Value side = com::liversedge::messages::Side::NULL_VALUE;
+        bool isIoc = false;
+        std::chrono::steady_clock::time_point createdAt;
     };
 
     void initOrderState(const std::string& cloid, double origSz, std::int32_t securityId);
@@ -59,6 +64,27 @@ public:
     com::liversedge::messages::OrderType::Value getOrderType(const std::string& cloid) const;
     OrderState applyFill(const std::string& cloid, double fillSz);
     std::string lookupCloidByOid(uint64_t oid) const;
+
+    // Sweep IOC orders that have exceeded the timeout; callback is invoked for each timed-out order
+    template<typename Callback>
+    void sweepIocTimeouts(std::chrono::steady_clock::time_point now, int timeoutSecs, Callback&& cb)
+    {
+        std::vector<std::string> timedOut;
+        for (const auto& [cloid, state] : m_cloidToState) {
+            if (state.isIoc && state.createdAt != std::chrono::steady_clock::time_point{}) {
+                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - state.createdAt).count();
+                if (elapsed >= timeoutSecs) {
+                    timedOut.push_back(cloid);
+                }
+            }
+        }
+        for (const auto& cloid : timedOut) {
+            auto it = m_cloidToState.find(cloid);
+            if (it != m_cloidToState.end()) {
+                cb(cloid, it->second);
+            }
+        }
+    }
 
 private:
     bool m_isReplay = false;

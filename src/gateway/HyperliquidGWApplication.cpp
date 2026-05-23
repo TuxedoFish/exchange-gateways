@@ -17,6 +17,8 @@ void HyperliquidGWApplication::start()
         m_config.getString("hl_private_key")
     };
 
+    m_iocTimeoutSecs = m_config.getInt("hl_ioc_timeout_secs", 5);
+
     m_websocket = std::make_unique<hyperliquid::WebsocketApi>(m_apiConfig, *this);
     m_websocket->start();
 }
@@ -77,7 +79,7 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
                  update.oid, update.sz, update.origSz, update.limitPx, update.cloid);
 
     // Check for timed-out buffered fills on every order update
-    checkBufferedFillTimeouts();
+    checkTimeouts();
 
     // Register oid->cloid mapping for fill correlation
     if (m_ordersHandler) {
@@ -97,8 +99,51 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
                      update.oid, update.cloid, hyperliquid::toString(update.status));
         return;
     } else if (update.status == hyperliquid::OrderStatus::Filled) {
-        spdlog::info("OrderUpdate Filled oid={} cloid={} - no-op (cleanup via fill path)",
-                     update.oid, update.cloid);
+        if (m_ordersHandler) {
+            const auto* state = m_ordersHandler->getOrderState(update.cloid);
+            if (state && state->origSz > 0.0 && state->cumQty < state->origSz) {
+                // Order lifecycle complete but not fully filled (e.g. IOC partial fill).
+                // Emit a terminal CANCELLED ER for the unfilled portion.
+                std::string clientOrderId = m_ordersHandler->lookupClientOrderId(update.cloid);
+                if (!clientOrderId.empty()) {
+                    com::liversedge::messages::ExecutionReport sbeExecReport;
+                    if (m_sbeWriter.prepareMessage(sbeExecReport)) {
+                        auto now = std::chrono::system_clock::now();
+                        auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+
+                        sbeExecReport.timestamp(timestamp);
+                        sbeExecReport.transactTime(update.statusTimestamp * 1000000ULL);
+                        sbeExecReport.securityId(m_refDataHolder.getSecurityIdBySymbol(update.coin));
+                        sbeExecReport.ordStatus(com::liversedge::messages::OrdStatus::CANCELLED);
+                        sbeExecReport.side(mapSide(update.side));
+                        sbeExecReport.orderType(m_ordersHandler->getOrderType(update.cloid));
+                        sbeExecReport.ordRejReason(com::liversedge::messages::OrdRejReason::NO_REJECT);
+
+                        SBEUtils::setPrice(sbeExecReport.price(), std::to_string(update.limitPx));
+                        SBEUtils::setQty(sbeExecReport.orderQty(), std::to_string(state->origSz));
+                        SBEUtils::setQty(sbeExecReport.cumQty(), std::to_string(state->cumQty));
+                        SBEUtils::setQty(sbeExecReport.leavesQty(), std::to_string(0.0));
+
+                        SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
+                        SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
+                        SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), "");
+
+                        spdlog::info("Sending terminal CANCELLED ER for partial fill: clientOrderId={} securityId={} orderQty={} cumQty={}",
+                                     clientOrderId, m_refDataHolder.getSecurityIdBySymbol(update.coin),
+                                     state->origSz, state->cumQty);
+                        m_sbeWriter.writeMessage(sbeExecReport);
+                    }
+                }
+            }
+
+            std::string cloid_check = m_ordersHandler->lookupCloidByOid(update.oid);
+            if (!cloid_check.empty()) {
+                spdlog::info("OrderUpdate Filled oid={} cloid={} - cleaning up", update.oid, update.cloid);
+                m_ordersHandler->removeOrder(update.cloid);
+            } else {
+                spdlog::info("OrderUpdate Filled oid={} cloid={} - already cleaned up", update.oid, update.cloid);
+            }
+        }
         return;
     }
 
@@ -129,15 +174,34 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     sbeExecReport.side(mapSide(update.side));
     sbeExecReport.orderType(m_ordersHandler ? m_ordersHandler->getOrderType(update.cloid) : com::liversedge::messages::OrderType::LIMIT);
     sbeExecReport.ordRejReason(
-        (update.status == hyperliquid::OrderStatus::Rejected || update.status == hyperliquid::OrderStatus::OracleRejected)
+        (update.status == hyperliquid::OrderStatus::Rejected || update.status == hyperliquid::OrderStatus::OracleRejected
+         || update.status == hyperliquid::OrderStatus::IocCancelRejected)
             ? com::liversedge::messages::OrdRejReason::OTHER
             : com::liversedge::messages::OrdRejReason::NO_REJECT);
 
     SBEUtils::setPrice(sbeExecReport.price(), std::to_string(update.limitPx));
-    SBEUtils::setQty(sbeExecReport.orderQty(), std::to_string(update.origSz));
-    SBEUtils::setQty(sbeExecReport.leavesQty(), std::to_string(update.sz));
 
+    // Use tracked state quantities when available.
+    // Hyperliquid may report a sub-order's origSz for IOC splits or modifies, not the requested qty.
+    double orderQty = update.origSz;
     double cumQty = update.origSz - update.sz;
+    double leavesQty = update.sz;
+    if (m_ordersHandler) {
+        const auto* state = m_ordersHandler->getOrderState(update.cloid);
+        if (state && state->origSz > 0.0) {
+            orderQty = state->origSz;
+            if (update.status == hyperliquid::OrderStatus::Open) {
+                cumQty = 0.0;
+                leavesQty = orderQty;
+            } else {
+                cumQty = state->cumQty;
+                leavesQty = 0.0;  // terminal state
+            }
+        }
+    }
+
+    SBEUtils::setQty(sbeExecReport.orderQty(), std::to_string(orderQty));
+    SBEUtils::setQty(sbeExecReport.leavesQty(), std::to_string(leavesQty));
     SBEUtils::setQty(sbeExecReport.cumQty(), std::to_string(cumQty));
 
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
@@ -147,7 +211,7 @@ void HyperliquidGWApplication::onOrderUpdate(const hyperliquid::OrderUpdate& upd
     spdlog::info("Sending SBE ExecutionReport clientOrderId={} securityId={} ordStatus={} side={} price={} orderQty={} leavesQty={} cumQty={}",
                  clientOrderId, m_refDataHolder.getSecurityIdBySymbol(update.coin),
                  (int)mapOrderStatus(update.status), update.side,
-                 update.limitPx, update.origSz, update.sz, cumQty);
+                 update.limitPx, orderQty, leavesQty, cumQty);
     m_sbeWriter.writeMessage(sbeExecReport);
 
     if (update.status == hyperliquid::OrderStatus::Open) {
@@ -173,7 +237,7 @@ void HyperliquidGWApplication::onUserFill(const hyperliquid::Fill& fill)
     }
 
     // Check for timed-out buffered fills
-    checkBufferedFillTimeouts();
+    checkTimeouts();
 
     std::string clientOrderId;
     std::string cloid;
@@ -238,8 +302,8 @@ void HyperliquidGWApplication::emitFillExecutionReport(const hyperliquid::Fill& 
                  fill.side, fill.px, fill.sz, state.cumQty, leavesQty, state.origSz);
     m_sbeWriter.writeMessage(sbeExecReport);
 
-    // Clean up on full fill
-    if (isFilled && m_ordersHandler) {
+    // Clean up on full fill (only for non-IOC; IOC cleanup via orderUpdate terminal state)
+    if (isFilled && m_ordersHandler && !state.isIoc) {
         m_ordersHandler->removeOrder(cloid);
     }
 }
@@ -271,7 +335,13 @@ void HyperliquidGWApplication::onPlaceOrder(const hyperliquid::PlaceOrderRespons
         if (s.error)
         {
             spdlog::error("PlaceOrder error: {} cloid={}", *s.error, pending.cloid);
-            sendNewOrderReject(pending.cloid, pending.securityId, *s.error);
+            std::string clientOrderId;
+            if (m_ordersHandler) clientOrderId = m_ordersHandler->lookupClientOrderId(pending.cloid);
+            if (clientOrderId.empty()) {
+                spdlog::info("PlaceOrder error for cloid={} but order already removed, skipping reject", pending.cloid);
+            } else {
+                sendNewOrderReject(pending.cloid, pending.securityId, *s.error);
+            }
         }
         else if (s.resting)
         {
@@ -295,12 +365,35 @@ void HyperliquidGWApplication::onModifyOrder(const hyperliquid::ModifyOrderRespo
         spdlog::error("ModifyOrder error: {}", m_lastPostResponse);
         if (!pending.cloid.empty())
         {
-            sendAmendReject(pending.cloid, pending.securityId, response.status);
+            std::string clientOrderId;
+            if (m_ordersHandler) clientOrderId = m_ordersHandler->lookupClientOrderId(pending.cloid);
+            if (clientOrderId.empty()) {
+                spdlog::info("ModifyOrder error for cloid={} but order already removed, skipping reject", pending.cloid);
+            } else {
+                sendAmendReject(pending.cloid, pending.securityId, response.status);
+            }
         }
     }
     else
     {
-        spdlog::info("ModifyOrder response status={}", response.status);
+        spdlog::info("ModifyOrder response status={} cloid={}", response.status, pending.cloid);
+    }
+
+    for (const auto& s : response.statuses)
+    {
+        if (s.error)
+        {
+            spdlog::error("ModifyOrder error: {} cloid={}", *s.error, pending.cloid);
+        }
+        else if (s.resting)
+        {
+            spdlog::info("ModifyOrder resting oid={} cloid={}", s.resting->oid, pending.cloid);
+        }
+        else if (s.filled)
+        {
+            spdlog::info("ModifyOrder filled oid={} cloid={} avgPx={} totalSz={}",
+                         s.filled->oid, pending.cloid, s.filled->avgPx, s.filled->totalSz);
+        }
     }
 }
 
@@ -400,7 +493,11 @@ void HyperliquidGWApplication::sendNewOrderReject(const std::string& cloid, std:
     sbeExecReport.ordRejReason(com::liversedge::messages::OrdRejReason::OTHER);
 
     std::string clientOrderId;
-    if (m_ordersHandler) clientOrderId = m_ordersHandler->lookupClientOrderId(cloid);
+    if (m_ordersHandler) {
+        clientOrderId = m_ordersHandler->lookupClientOrderId(cloid);
+        const auto* state = m_ordersHandler->getOrderState(cloid);
+        if (state) sbeExecReport.side(state->side);
+    }
 
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
@@ -427,7 +524,11 @@ void HyperliquidGWApplication::sendAmendReject(const std::string& cloid, std::in
     sbeExecReport.ordRejReason(com::liversedge::messages::OrdRejReason::OTHER);
 
     std::string clientOrderId;
-    if (m_ordersHandler) clientOrderId = m_ordersHandler->lookupClientOrderId(cloid);
+    if (m_ordersHandler) {
+        clientOrderId = m_ordersHandler->lookupClientOrderId(cloid);
+        const auto* state = m_ordersHandler->getOrderState(cloid);
+        if (state) sbeExecReport.side(state->side);
+    }
 
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
     SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
@@ -464,42 +565,14 @@ void HyperliquidGWApplication::sendCancelReject(const std::string& cloid, std::i
 
 void HyperliquidGWApplication::replayBufferedFills(uint64_t oid)
 {
-    // Collect all buffered fills for this oid first, so we can adjust
-    // origSz before replaying.  Hyperliquid may split a single IOC into
-    // multiple sub-orders that share the same oid/cloid; each sub-order
-    // reports its own origSz, but the fills cover the aggregate quantity.
-    // Without this, the first sub-order's origSz triggers a premature
-    // "filled" cleanup and the remaining fills lose their cloid mapping.
     std::vector<hyperliquid::Fill> fills;
     for (auto it = m_bufferedFills.begin(); it != m_bufferedFills.end(); )
     {
-        if (it->fill.oid == oid)
-        {
+        if (it->fill.oid == oid) {
             fills.push_back(it->fill);
             it = m_bufferedFills.erase(it);
-        }
-        else
-        {
+        } else {
             ++it;
-        }
-    }
-
-    if (fills.empty()) return;
-
-    // If total buffered fill size exceeds the current origSz, adjust it
-    // so cumQty tracking doesn't trigger premature cleanup.
-    if (m_ordersHandler) {
-        double totalFillSz = 0.0;
-        for (const auto& f : fills) totalFillSz += f.sz;
-
-        std::string cloid = m_ordersHandler->lookupCloidByOid(oid);
-        if (!cloid.empty()) {
-            auto state = m_ordersHandler->getOrderState(cloid);
-            if (state && totalFillSz > state->origSz) {
-                spdlog::info("Adjusting origSz for cloid={} from {} to {} (IOC split, {} buffered fills)",
-                             cloid, state->origSz, totalFillSz, fills.size());
-                m_ordersHandler->initOrderState(cloid, totalFillSz, state->securityId);
-            }
         }
     }
 
@@ -517,7 +590,7 @@ void HyperliquidGWApplication::replayBufferedFills(uint64_t oid)
     }
 }
 
-void HyperliquidGWApplication::checkBufferedFillTimeouts()
+void HyperliquidGWApplication::checkTimeouts()
 {
     auto now = std::chrono::steady_clock::now();
     for (auto it = m_bufferedFills.begin(); it != m_bufferedFills.end(); )
@@ -533,6 +606,46 @@ void HyperliquidGWApplication::checkBufferedFillTimeouts()
         {
             ++it;
         }
+    }
+
+    // IOC order timeout: if an IOC order hasn't received a terminal state, auto-cancel
+    if (m_ordersHandler) {
+        m_ordersHandler->sweepIocTimeouts(now, m_iocTimeoutSecs, [this](const std::string& cloid,
+                                          const HyperliquidOrdersHandler::OrderState& state) {
+            spdlog::warn("IOC order timed out cloid={} origSz={} cumQty={} - sending cancel ER",
+                         cloid, state.origSz, state.cumQty);
+
+            std::string clientOrderId = m_ordersHandler->lookupClientOrderId(cloid);
+            if (clientOrderId.empty()) return;
+
+            com::liversedge::messages::ExecutionReport sbeExecReport;
+            if (!m_sbeWriter.prepareMessage(sbeExecReport)) return;
+
+            auto ts = std::chrono::system_clock::now();
+            auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(ts.time_since_epoch()).count();
+
+            sbeExecReport.timestamp(timestamp);
+            sbeExecReport.transactTime(timestamp);
+            sbeExecReport.securityId(state.securityId);
+            sbeExecReport.ordStatus(com::liversedge::messages::OrdStatus::CANCELLED);
+            sbeExecReport.side(com::liversedge::messages::Side::NULL_VALUE);
+            sbeExecReport.orderType(state.orderType);
+            sbeExecReport.ordRejReason(com::liversedge::messages::OrdRejReason::NO_REJECT);
+
+            SBEUtils::setQty(sbeExecReport.orderQty(), std::to_string(state.origSz));
+            SBEUtils::setQty(sbeExecReport.cumQty(), std::to_string(state.cumQty));
+            SBEUtils::setQty(sbeExecReport.leavesQty(), std::to_string(0.0));
+
+            SBEUtils::setVarString(sbeExecReport, sbeExecReport.origClientOrderId(), clientOrderId);
+            SBEUtils::setVarString(sbeExecReport, sbeExecReport.clientOrderId(), clientOrderId);
+            SBEUtils::setVarString(sbeExecReport, sbeExecReport.text(), "IOC timeout");
+
+            spdlog::info("Sending IOC timeout cancel ER clientOrderId={} securityId={} orderQty={} cumQty={}",
+                         clientOrderId, state.securityId, state.origSz, state.cumQty);
+            m_sbeWriter.writeMessage(sbeExecReport);
+
+            m_ordersHandler->removeOrder(cloid);
+        });
     }
 }
 
@@ -568,9 +681,10 @@ com::liversedge::messages::OrdStatus::Value HyperliquidGWApplication::mapOrderSt
         return com::liversedge::messages::OrdStatus::CANCELLED;
     case hyperliquid::OrderStatus::Rejected:
     case hyperliquid::OrderStatus::OracleRejected:
+    case hyperliquid::OrderStatus::IocCancelRejected:
         return com::liversedge::messages::OrdStatus::REJECTED;
     default:
-        return com::liversedge::messages::OrdStatus::NEW;
+        return com::liversedge::messages::OrdStatus::REJECTED;
     }
 }
 

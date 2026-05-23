@@ -92,6 +92,14 @@ gw_outbound_file_path=<path_to_outbound_queue>
 
 Hyperliquid market data configs also take a `coins` field (comma-separated list of symbols to subscribe to).
 
+## Batch Processing
+
+Process historical raw captures from HDD into binary SBE format on SSD. The script copies each day's raw file to SSD, processes it, then deletes the staged copy. Automatically skips already-processed dates.
+
+```bash
+scripts/process-hyperliquid-backfill.sh
+```
+
 ## Notes
 
 - SBE code generation runs automatically during build from `schema/messages.xml`. To regenerate manually:

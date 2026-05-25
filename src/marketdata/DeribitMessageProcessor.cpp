@@ -1,6 +1,22 @@
 #include "../../include/marketdata/DeribitMessageProcessor.h"
 #include <spdlog/spdlog.h>
 
+namespace
+{
+    std::string formatUtcNanos(uint64_t nanos)
+    {
+        time_t secs = nanos / 1000000000ULL;
+        int millis = (nanos % 1000000000ULL) / 1000000;
+        struct tm tm;
+        gmtime_r(&secs, &tm);
+        char buf[32];
+        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+        char result[40];
+        snprintf(result, sizeof(result), "%s.%03d", buf, millis);
+        return result;
+    }
+}
+
 DeribitMessageProcessor::DeribitMessageProcessor(SBEBinaryWriter& writer) : MessageProcessor(writer)
 {
 }
@@ -13,7 +29,10 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataSnapshotFullRefre
     int securityId = getSecurityId(symbol);
     if (securityId == -1)
     {
-        spdlog::error("No matching security found for {}", symbol);
+        if (getConnectionStatus() >= com::liversedge::messages::ConnectionStatusEnum::Value::STARTING)
+        {
+            spdlog::error("No matching security found for {}", symbol);
+        }
         return;
     }
 
@@ -196,7 +215,10 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataIncrementalRefres
     const int securityId = getSecurityId(symbol);
     if (securityId == -1)
     {
-        spdlog::error("No matching security found for incremental update: {}", symbol);
+        if (getConnectionStatus() >= com::liversedge::messages::ConnectionStatusEnum::Value::STARTING)
+        {
+            spdlog::error("No matching security found for incremental update: {}", symbol);
+        }
         return;
     }
 
@@ -349,8 +371,8 @@ void DeribitMessageProcessor::onMessage(const FIX44::Logout& message, const FIX:
 
 void DeribitMessageProcessor::onMessage(const FIX44::Logon& message, const FIX::SessionID& sessionID)
 {
-    spdlog::info("Processing FIX44::Logon message");
     const uint64_t timestamp = GetSendingTime(static_cast<FIX44::Message>(message));
+    spdlog::info("Processing FIX44::Logon message (sendingTime={})", formatUtcNanos(timestamp));
 
     if (getConnectionStatus() == com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
     {

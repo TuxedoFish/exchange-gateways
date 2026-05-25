@@ -148,6 +148,8 @@ void HyperliquidMessageProcessor::onOutcomeMeta(
                 inst.symbol = symbol;
                 inst.coin = coin;
                 inst.underlying = outcome.description.underlying;
+                inst.targetPrice = outcome.description.targetPrice;
+                inst.sideName = outcome.sideSpecs[side].name;
                 inst.outcomeIndex = outcome.outcome;
                 inst.side = side;
                 inst.expiry = outcome.description.expiry;
@@ -228,6 +230,26 @@ void HyperliquidMessageProcessor::emitOutcomeSecurityDefinition(const OutcomeIns
     m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(0, -8));
     SBEUtils::setQty(m_securityDefinition.minSize(), "0");
     SBEUtils::setQty(m_securityDefinition.minAmount(), "10");
+    if (!outcome.targetPrice.empty())
+    {
+        SBEUtils::setPrice(m_securityDefinition.strikePrice(), outcome.targetPrice);
+    }
+    else
+    {
+        m_securityDefinition.strikePrice().mantissa(com::liversedge::messages::Price::mantissaNullValue());
+    }
+    if (outcome.sideName == "Yes")
+    {
+        m_securityDefinition.putOrCall(com::liversedge::messages::PutOrCall::CALL);
+    }
+    else if (outcome.sideName == "No")
+    {
+        m_securityDefinition.putOrCall(com::liversedge::messages::PutOrCall::PUT);
+    }
+    else
+    {
+        m_securityDefinition.putOrCall(com::liversedge::messages::PutOrCall::Value::NULL_VALUE);
+    }
     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), outcome.symbol);
     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.marketSymbol(),
         hyperliquid::outcomeCoin(outcome.outcomeIndex, outcome.side));
@@ -239,8 +261,10 @@ void HyperliquidMessageProcessor::emitOutcomeSecurityDefinition(const OutcomeIns
         return;
     }
 
-    spdlog::info("SecurityDefinition {} type=PREDICTION_MARKET maturity={:04d}-{:02d}-{:02d}",
+    spdlog::info("SecurityDefinition {} type=PREDICTION_MARKET strike={} side={} maturity={:04d}-{:02d}-{:02d}",
                  outcome.symbol,
+                 outcome.targetPrice.empty() ? "N/A" : outcome.targetPrice,
+                 outcome.sideName,
                  static_cast<int>(m_securityDefinition.maturityDate().year()),
                  static_cast<int>(m_securityDefinition.maturityDate().month()),
                  static_cast<int>(m_securityDefinition.maturityDate().day()));
@@ -519,6 +543,7 @@ void HyperliquidMessageProcessor::onTrade(const hyperliquid::Trade& trade)
     SBEUtils::setPrice(m_mdUpdate.price(), trade.px);
     SBEUtils::setQty(m_mdUpdate.qty(), trade.sz);
     m_mdUpdate.tradeId(trade.tid);
+    m_mdUpdate.tradeCondition(com::liversedge::messages::TradeCondition::Value::NULL_VALUE);
 
     if (!m_writer.writeMessage(m_mdUpdate))
     {
@@ -574,6 +599,8 @@ void HyperliquidMessageProcessor::emitSecurityDefinitionWithPricePrecision(const
     m_securityDefinition.minSizeIncrement().mantissa(SBEUtils::powerOfTenMantissa(asset.szDecimals, -8));
     SBEUtils::setQty(m_securityDefinition.minSize(), "0");
     SBEUtils::setQty(m_securityDefinition.minAmount(), "10");
+    m_securityDefinition.strikePrice().mantissa(com::liversedge::messages::Price::mantissaNullValue());
+    m_securityDefinition.putOrCall(com::liversedge::messages::PutOrCall::Value::NULL_VALUE);
     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.symbol(), asset.name);
     SBEUtils::setVarString(m_securityDefinition, m_securityDefinition.marketSymbol(), asset.name);
 

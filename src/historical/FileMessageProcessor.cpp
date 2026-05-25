@@ -5,10 +5,21 @@ FileMessageProcessor::FileMessageProcessor(const std::string& dataDictionaryFile
     m_dataDictionary(dataDictionaryFilePath), m_writer(writer), m_processor(messageProcessor) {
 }
 
-void FileMessageProcessor::process(std::string msgStr) {
+void FileMessageProcessor::process(std::string_view msgStr) {
+    // Fast path: skip full FIX parsing until we see a Logon
+    if (!m_hasSeenLogon)
+    {
+        if (!isLogon(msgStr))
+            return;
+        m_hasSeenLogon = true;
+    }
+
+    // Reuse buffer to avoid per-message allocation
+    m_msgBuffer.assign(msgStr.data(), msgStr.size());
+
     try
     {
-        auto msg = FIX::Message(msgStr, m_dataDictionary, true);
+        auto msg = FIX::Message(m_msgBuffer, m_dataDictionary, false);
 
         if (!m_sessionInitialized)
         {
@@ -42,15 +53,15 @@ void FileMessageProcessor::process(std::string msgStr) {
     } catch (const FIX::InvalidMessage& e)
     {
         spdlog::error("Invalid FIX message: {}", e.what());
-        spdlog::error("Message string: {}", msgStr);
+        spdlog::error("Message string: {}", m_msgBuffer);
     } catch (const FIX::FieldNotFound& e)
     {
         spdlog::error("Field not found in FIX message: {}", e.what());
-        spdlog::error("Message string: {}", msgStr);
+        spdlog::error("Message string: {}", m_msgBuffer);
     } catch (const std::exception& e)
     {
         spdlog::error("Error processing FIX message: {}", e.what());
-        spdlog::error("Message string: {}", msgStr);
+        spdlog::error("Message string: {}", m_msgBuffer);
     }
 }
 
@@ -58,7 +69,7 @@ void FileMessageProcessor::nextFile(std::string filePath) {
     m_writer.openNewFile(filePath);
 }
 
-bool FileMessageProcessor::isLogon(const std::string& msgStr) {
+bool FileMessageProcessor::isLogon(std::string_view msgStr) {
     // Quick check for logon message (MsgType=A) without full parsing
     // Look for the pattern "35=A" in the FIX message
     size_t pos = msgStr.find("35=A");

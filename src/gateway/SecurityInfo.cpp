@@ -46,6 +46,10 @@ SecurityInfo::SecurityInfo(const com::liversedge::messages::SecurityDefinition& 
     m_contractMultiplier = SBEUtils::convertPrice(contractMultiplierField);
 
     m_securityType = secDef.securityType();
+
+    auto strikePriceField = const_cast<com::liversedge::messages::SecurityDefinition&>(secDef).strikePrice();
+    m_strikePrice = SBEUtils::convertPrice(strikePriceField);
+    m_putOrCall = secDef.putOrCall();
 }
 
 std::string SecurityInfo::toString() const
@@ -70,6 +74,8 @@ std::string SecurityInfo::toString() const
     oss << ", minAmount=" << m_minAmount;
     oss << ", contractMultiplier=" << m_contractMultiplier;
     oss << ", securityType=" << static_cast<int>(m_securityType);
+    oss << ", strikePrice=" << m_strikePrice;
+    oss << ", putOrCall=" << static_cast<int>(m_putOrCall);
     oss << "}";
     return oss.str();
 }

@@ -25,7 +25,7 @@ int MarketdataHistoricalRunner::run() {
     FileMessageProcessor historicalProcessor{ dataDictionaryLoc, processor, writer };
 
     auto processLine = [&](std::string_view msgStr) {
-        historicalProcessor.process(std::string(msgStr));
+        historicalProcessor.process(msgStr);
     };
 
     if (!config_.getBool("from_start"))

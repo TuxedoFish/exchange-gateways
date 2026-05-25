@@ -9,6 +9,7 @@
 #include "../../generated/com_liversedge_messages/SettlType.h"
 #include "../../generated/com_liversedge_messages/SecurityType.h"
 #include "../../generated/com_liversedge_messages/ActionEnum.h"
+#include "../../generated/com_liversedge_messages/PutOrCall.h"
 #include "../../generated/com_liversedge_messages/Price.h"
 #include "../../generated/com_liversedge_messages/Qty.h"
 #include "../../generated/com_liversedge_messages/Date.h"
@@ -33,6 +34,8 @@ public:
     std::int8_t getInstrumentPricePrecision() const { return m_instrumentPricePrecision; }
     Dec getMinSizeIncrement() const { return m_minSizeIncrement; }
     Dec getContractMultiplier() const { return m_contractMultiplier; }
+    Dec getStrikePrice() const { return m_strikePrice; }
+    com::liversedge::messages::PutOrCall::Value getPutOrCall() const { return m_putOrCall; }
 
     std::string toString() const;
 
@@ -53,5 +56,7 @@ private:
     Dec m_minSize = 0;
     Dec m_minAmount = 0;
     Dec m_contractMultiplier = 0;
+    Dec m_strikePrice = 0;
+    com::liversedge::messages::PutOrCall::Value m_putOrCall = com::liversedge::messages::PutOrCall::NULL_VALUE;
     com::liversedge::messages::SecurityType::Value m_securityType = com::liversedge::messages::SecurityType::NULL_VALUE;
 };

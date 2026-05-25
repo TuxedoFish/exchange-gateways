@@ -39,6 +39,8 @@ private:
         std::string symbol;       // "BTC-1D-YES"
         std::string coin;         // "#1230"
         std::string underlying;   // "BTC"
+        std::string targetPrice;  // Strike/threshold (e.g. "70000")
+        std::string sideName;     // "Yes" or "No"
         int outcomeIndex;
         int side;
         std::chrono::system_clock::time_point expiry;

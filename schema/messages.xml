@@ -70,6 +70,7 @@
             <validValue name="FUTCO" description="future combination">1</validValue>
             <validValue name="FXSPOT" description="spot">2</validValue>
             <validValue name="PREDICTION_MARKET" description="prediction market">3</validValue>
+            <validValue name="OPT" description="option">4</validValue>
         </enum>
 
         <enum name="ActionEnum" encodingType="uint8">
@@ -118,6 +119,16 @@
             <validValue name="NEW" description="New level">0</validValue>
             <validValue name="CHANGE" description="Update existing level">1</validValue>
             <validValue name="DELETE" description="Remove level">2</validValue>
+        </enum>
+
+        <enum name="PutOrCall" encodingType="uint8">
+            <validValue name="PUT" description="put">0</validValue>
+            <validValue name="CALL" description="call">1</validValue>
+        </enum>
+
+        <enum name="TradeCondition" encodingType="uint8">
+            <validValue name="NORMAL" description="normal trade">0</validValue>
+            <validValue name="LIQUIDATION" description="liquidation trade">1</validValue>
         </enum>
 
         <enum name="Side" encodingType="uint8">
@@ -203,6 +214,10 @@
         <field name="minAmount" id="16" type="Qty" description="Minimum amount on order."/>
         <field name="marginingType" id="17" type="MarginingType" description="Margining type (for perps)"/>
         <field name="positionCurrency" id="18" type="Currency" description="Currency used for position"/>
+        <field name="strikePrice" id="21" type="Price" presence="optional"
+               description="Strike price for options/prediction markets."/>
+        <field name="putOrCall" id="22" type="PutOrCall" presence="optional"
+               description="Put or call."/>
         <field name="symbol" id="2" type="VarStringEncoding" description="Security symbol."/>
         <field name="marketSymbol" id="20" type="VarStringEncoding" description="Exchange-level asset identifier for order routing."/>
     </sbe:message>
@@ -222,6 +237,8 @@
         <field name="qty" id="6" type="Qty" description="Quantity at price level."/>
         <field name="action" id="7" type="MDUpdateAction" presence="optional" description="Action for book updates (ignored for trades)."/>
         <field name="tradeId" id="8" type="uint64" presence="optional" description="Trade identifier (only for trade updates)."/>
+        <field name="tradeCondition" id="9" type="TradeCondition" presence="optional"
+               description="Trade condition (e.g. liquidation)."/>
     </sbe:message>
 
     <sbe:message name="MDFullBook" id="104" description="Market Data Full Book Snapshot">

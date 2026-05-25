@@ -370,7 +370,13 @@ void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& sn
     if (m_pendingSecDefs.empty() && m_pendingOutcomeSecDefs.empty() &&
         getConnectionStatus() != com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE)
     {
-        spdlog::info("All SecurityDefinitions emitted, going ONLINE.");
+        std::string secList;
+        for (const auto& [symbol, id] : getSymbolMap())
+        {
+            if (!secList.empty()) secList += ", ";
+            secList += symbol + "(" + std::to_string(id) + ")";
+        }
+        spdlog::info("All SecurityDefinitions emitted, going ONLINE. Securities: [{}]", secList);
         updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, timestampNanos);
     }
 

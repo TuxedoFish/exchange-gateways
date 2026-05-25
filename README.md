@@ -94,10 +94,17 @@ Hyperliquid market data configs also take a `coins` field (comma-separated list 
 
 ## Batch Processing
 
-Process historical raw captures from HDD into binary SBE format on SSD. The script copies each day's raw file to SSD, processes it, then deletes the staged copy. Automatically skips already-processed dates.
+Process historical raw captures into binary SBE format. The script copies each day's raw file to SSD, processes it, then archives/cleans up. Automatically skips already-processed dates. Runs daily at 3:30am via cron.
 
 ```bash
+# Backfill HDD files only (Feb-Apr)
+scripts/process-hyperliquid-backfill.sh --hdd-only
+
+# Process everything (HDD + SSD raw files)
 scripts/process-hyperliquid-backfill.sh
+
+# Reprocess all files from scratch
+scripts/process-hyperliquid-backfill.sh --overwrite
 ```
 
 ## Notes

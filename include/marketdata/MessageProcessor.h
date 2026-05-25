@@ -56,6 +56,7 @@ protected:
     bool removeSecurity(int securityId);
 
     com::liversedge::messages::ConnectionStatusEnum::Value getConnectionStatus() const;
+    const std::unordered_map<std::string, int>& getSymbolMap() const { return m_symbolToSecurityId; }
 
 private:
     std::int32_t m_securityIdCounter{0};

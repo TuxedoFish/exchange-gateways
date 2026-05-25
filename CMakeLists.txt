@@ -58,6 +58,8 @@ set(FIX_SOURCES
         include/fix/FIXCustomTags.h
         include/fix/FIXUtils.h
         src/fix/FIXUtils.cpp
+        include/fix/LightFIXMessage.h
+        src/fix/LightFIXMessage.cpp
 )
 
 set(GATEWAY_SOURCES

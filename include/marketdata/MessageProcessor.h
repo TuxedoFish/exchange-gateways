@@ -32,6 +32,7 @@ constexpr int MAX_LEVELS = 50;
 
 class MessageProcessor
 {
+    friend class FileMessageProcessor;
 public:
     explicit MessageProcessor(SBEBinaryWriter& writer);
     ~MessageProcessor() = default;

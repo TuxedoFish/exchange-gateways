@@ -120,14 +120,14 @@ char FileMessageProcessor::extractMsgType(std::string_view msg) {
 // Fast-path handler for 35=X (MarketDataIncrementalRefresh)
 // ---------------------------------------------------------------------------
 void FileMessageProcessor::processIncrementalFast(std::string_view msgStr) {
-    if (!m_processor.m_shouldOutput)
+    if (!m_processor.shouldOutput())
         return;
 
     m_lightMsg.parse(msgStr);
 
     const uint64_t timestamp = parseFIXTimestampNanos(m_lightMsg.getField(52));
 
-    const std::string symbol(m_lightMsg.getField(55));
+    const auto symbol = m_lightMsg.getField(55);
     const int securityId = m_processor.getSecurityId(symbol);
     if (securityId == -1)
     {
@@ -165,7 +165,7 @@ void FileMessageProcessor::processSnapshotFast(std::string_view msgStr) {
 
     const uint64_t timestamp = parseFIXTimestampNanos(m_lightMsg.getField(52));
 
-    const std::string symbol(m_lightMsg.getField(55));
+    const auto symbol = m_lightMsg.getField(55);
     const int securityId = m_processor.getSecurityId(symbol);
     if (securityId == -1)
     {
@@ -176,7 +176,7 @@ void FileMessageProcessor::processSnapshotFast(std::string_view msgStr) {
         return;
     }
 
-    if (!m_processor.m_shouldOutput)
+    if (!m_processor.shouldOutput())
     {
         m_processor.updateSecurityStatus(securityId, timestamp,
             com::liversedge::messages::SecurityStatusEnum::Value::ONLINE);
@@ -213,18 +213,18 @@ void FileMessageProcessor::processSnapshotFast(std::string_view msgStr) {
     }
 
     // Prepare MDFullBook message
-    if (!m_writer.prepareMessage(m_processor.m_mdFullBook))
+    if (!m_writer.prepareMessage(m_processor.mdFullBook()))
     {
         spdlog::error("Error preparing MDFullBook message");
         return;
     }
 
-    m_processor.m_mdFullBook.securityId(securityId);
-    m_processor.m_mdFullBook.timestamp(timestamp);
+    m_processor.mdFullBook().securityId(securityId);
+    m_processor.mdFullBook().timestamp(timestamp);
 
     // Write bid levels (up to MAX_LEVELS)
     auto nBidLevels = std::min(MAX_LEVELS, bidCount);
-    auto& bidLevels = m_processor.m_mdFullBook.bidLevelsCount(nBidLevels);
+    auto& bidLevels = m_processor.mdFullBook().bidLevelsCount(nBidLevels);
     int bidIdx = 0;
     for (int i = 0; i < noMDEntries && bidIdx < nBidLevels; ++i)
     {
@@ -242,7 +242,7 @@ void FileMessageProcessor::processSnapshotFast(std::string_view msgStr) {
 
     // Write ask levels (up to MAX_LEVELS)
     auto nAskLevels = std::min(MAX_LEVELS, askCount);
-    auto& askLevels = m_processor.m_mdFullBook.askLevelsCount(nAskLevels);
+    auto& askLevels = m_processor.mdFullBook().askLevelsCount(nAskLevels);
     int askIdx = 0;
     for (int i = 0; i < noMDEntries && askIdx < nAskLevels; ++i)
     {
@@ -259,7 +259,7 @@ void FileMessageProcessor::processSnapshotFast(std::string_view msgStr) {
     }
 
     // Write the MDFullBook message
-    if (!m_writer.writeMessage(m_processor.m_mdFullBook))
+    if (!m_writer.writeMessage(m_processor.mdFullBook()))
     {
         spdlog::error("Error writing MDFullBook message");
         return;
@@ -312,13 +312,13 @@ void FileMessageProcessor::processMDEntryFast(
     char type = entryType[0];
     if (type != '0' && type != '1' && type != '2') return;
 
-    if (!m_writer.prepareMessage(m_processor.m_mdUpdate))
+    if (!m_writer.prepareMessage(m_processor.mdUpdate()))
     {
         spdlog::error("Error preparing MDUpdate message");
         return;
     }
 
-    auto& mdUpdate = m_processor.m_mdUpdate;
+    auto& mdUpdate = m_processor.mdUpdate();
     mdUpdate.securityId(securityId);
     mdUpdate.timestamp(timestamp);
 
@@ -377,7 +377,7 @@ void FileMessageProcessor::processMDEntryFast(
         }
     }
 
-    if (!m_writer.writeMessage(m_processor.m_mdUpdate))
+    if (!m_writer.writeMessage(m_processor.mdUpdate()))
     {
         spdlog::error("Error writing MDUpdate message");
     }

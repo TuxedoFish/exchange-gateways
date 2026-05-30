@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string_view>
 #include <unordered_map>
 #include "quickfix/Application.h"
 #include "quickfix/MessageCracker.h"
@@ -30,14 +31,33 @@ struct ProcessorSecurityInfo
 // Caps levels to 50 to ensure they fit in 128kb buffer
 constexpr int MAX_LEVELS = 50;
 
+// Transparent hash: allows unordered_map<string,...> to be queried with string_view
+struct StringHash {
+    using is_transparent = void;
+    size_t operator()(std::string_view sv) const { return std::hash<std::string_view>{}(sv); }
+    size_t operator()(const std::string& s) const { return std::hash<std::string_view>{}(std::string_view{s}); }
+};
+
 class MessageProcessor
 {
-    friend class FileMessageProcessor;
 public:
     explicit MessageProcessor(SBEBinaryWriter& writer);
     ~MessageProcessor() = default;
 
     void setShouldOutput(bool shouldOutput);
+    bool shouldOutput() const { return m_shouldOutput; }
+
+    // Security lookups — string_view overload avoids heap allocation
+    int getSecurityId(std::string_view symbol) const;
+    com::liversedge::messages::SecurityStatusEnum::Value getSecurityStatus(int securityId) const;
+    com::liversedge::messages::ConnectionStatusEnum::Value getConnectionStatus() const;
+
+    // SBE message access for fast-path writers
+    com::liversedge::messages::MDUpdate& mdUpdate() { return m_mdUpdate; }
+    com::liversedge::messages::MDFullBook& mdFullBook() { return m_mdFullBook; }
+
+    bool updateSecurityStatus(int securityId, std::uint64_t timestamp, com::liversedge::messages::SecurityStatusEnum::Value newStatus);
+
 protected:
     SBEBinaryWriter& m_writer;
     com::liversedge::messages::ConnectionStatus m_connectionStatus;
@@ -48,20 +68,16 @@ protected:
     bool m_shouldOutput = true;
 
     int createSecurity(const std::string& symbol);
-    int getSecurityId(const std::string& symbol) const;
-    com::liversedge::messages::SecurityStatusEnum::Value getSecurityStatus(int securityId) const;
 
     bool updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value value, std::uint64_t timestamp);
-    bool updateSecurityStatus(int securityId, std::uint64_t timestamp, com::liversedge::messages::SecurityStatusEnum::Value newStatus);
     bool invalidateState(std::uint64_t timestamp);
     bool removeSecurity(int securityId);
 
-    com::liversedge::messages::ConnectionStatusEnum::Value getConnectionStatus() const;
-    const std::unordered_map<std::string, int>& getSymbolMap() const { return m_symbolToSecurityId; }
+    const std::unordered_map<std::string, int, StringHash, std::equal_to<>>& getSymbolMap() const { return m_symbolToSecurityId; }
 
 private:
     std::int32_t m_securityIdCounter{0};
     std::unordered_map<int, ProcessorSecurityInfo> m_securities;
-    std::unordered_map<std::string, int> m_symbolToSecurityId;
+    std::unordered_map<std::string, int, StringHash, std::equal_to<>> m_symbolToSecurityId;
     com::liversedge::messages::ConnectionStatusEnum::Value m_lastConnectionStatus{com::liversedge::messages::ConnectionStatusEnum::Value::NULL_VALUE};
 };

@@ -14,7 +14,7 @@ int MessageProcessor::createSecurity(const std::string& symbol)
     return id;
 }
 
-int MessageProcessor::getSecurityId(const std::string& symbol) const
+int MessageProcessor::getSecurityId(std::string_view symbol) const
 {
     auto it = m_symbolToSecurityId.find(symbol);
     return it != m_symbolToSecurityId.end() ? it->second : -1;

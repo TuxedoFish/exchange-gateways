@@ -1,5 +1,6 @@
 #include "../../include/fix/LightFIXMessage.h"
 #include <charconv>
+#include <cstring>
 #include <ctime>
 
 void LightFIXMessage::parse(std::string_view msg) {
@@ -75,17 +76,30 @@ LightFIXMessage::GroupView LightFIXMessage::getGroup(int delimiterTag, int index
 uint64_t parseFIXTimestampNanos(std::string_view ts) {
     // Format: YYYYMMDD-HH:MM:SS.fff...
     // Positions: 0123456789012345678...
-    struct tm tm = {};
-    tm.tm_year = (ts[0] - '0') * 1000 + (ts[1] - '0') * 100 +
-                 (ts[2] - '0') * 10   + (ts[3] - '0') - 1900;
-    tm.tm_mon  = (ts[4] - '0') * 10 + (ts[5] - '0') - 1;
-    tm.tm_mday = (ts[6] - '0') * 10 + (ts[7] - '0');
-    tm.tm_hour = (ts[9] - '0') * 10 + (ts[10] - '0');
-    tm.tm_min  = (ts[12] - '0') * 10 + (ts[13] - '0');
-    tm.tm_sec  = (ts[15] - '0') * 10 + (ts[16] - '0');
+    //
+    // Cache the date-to-epoch conversion: timegm() is expensive and the date
+    // portion (YYYYMMDD) changes at most once per day in chronological data.
+    static uint64_t cachedDateBytes = 0;   // first 8 bytes as uint64_t
+    static uint64_t cachedMidnightNanos = 0;
 
-    time_t secs = timegm(&tm);
-    uint64_t nanos = static_cast<uint64_t>(secs) * 1000000000ULL;
+    uint64_t dateBytes;
+    std::memcpy(&dateBytes, ts.data(), 8);
+
+    if (dateBytes != cachedDateBytes) {
+        struct tm tm = {};
+        tm.tm_year = (ts[0] - '0') * 1000 + (ts[1] - '0') * 100 +
+                     (ts[2] - '0') * 10   + (ts[3] - '0') - 1900;
+        tm.tm_mon  = (ts[4] - '0') * 10 + (ts[5] - '0') - 1;
+        tm.tm_mday = (ts[6] - '0') * 10 + (ts[7] - '0');
+        cachedMidnightNanos = static_cast<uint64_t>(timegm(&tm)) * 1000000000ULL;
+        cachedDateBytes = dateBytes;
+    }
+
+    // Time-of-day: pure arithmetic, no syscall
+    uint64_t nanos = cachedMidnightNanos;
+    nanos += static_cast<uint64_t>((ts[9]  - '0') * 10 + (ts[10] - '0')) * 3600000000000ULL;
+    nanos += static_cast<uint64_t>((ts[12] - '0') * 10 + (ts[13] - '0')) * 60000000000ULL;
+    nanos += static_cast<uint64_t>((ts[15] - '0') * 10 + (ts[16] - '0')) * 1000000000ULL;
 
     // Parse fractional seconds after '.' at position 17
     if (ts.size() > 18) {
@@ -94,18 +108,10 @@ uint64_t parseFIXTimestampNanos(std::string_view ts) {
         for (size_t i = 18; i < ts.size(); ++i) {
             frac = frac * 10 + (ts[i] - '0');
         }
-        // Scale to nanoseconds based on number of fractional digits
         static constexpr uint64_t scale[] = {
-            1000000000ULL, // 0 digits (unused)
-            100000000ULL,  // 1 digit
-            10000000ULL,   // 2 digits
-            1000000ULL,    // 3 digits (millis)
-            100000ULL,     // 4 digits
-            10000ULL,      // 5 digits
-            1000ULL,       // 6 digits (micros)
-            100ULL,        // 7 digits
-            10ULL,         // 8 digits
-            1ULL,          // 9 digits (nanos)
+            1000000000ULL, 100000000ULL, 10000000ULL, 1000000ULL,
+            100000ULL,     10000ULL,     1000ULL,     100ULL,
+            10ULL,         1ULL,
         };
         if (fracDigits <= 9) {
             nanos += frac * scale[fracDigits];

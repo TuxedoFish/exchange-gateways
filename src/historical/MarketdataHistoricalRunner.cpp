@@ -33,7 +33,11 @@ int MarketdataHistoricalRunner::run() {
         // Check for previous day file and prime state if needed
         tm previousDate = startDate;
         previousDate.tm_mday -= 1;
+        spdlog::info("Before mktime: year={}, mon={}, mday={}", 1900+previousDate.tm_year, previousDate.tm_mon+1, previousDate.tm_mday);
+        mktime(&previousDate);
+        spdlog::info("After mktime: year={}, mon={}, mday={}", 1900+previousDate.tm_year, previousDate.tm_mon+1, previousDate.tm_mday);
         std::string previousFilePath = findValidFilePath(rawFixCapturesLoc, previousDate);
+        spdlog::info("findValidFilePath returned: '{}'", previousFilePath);
         if (!previousFilePath.empty() && boost::filesystem::exists(previousFilePath)) {
             spdlog::info("Found previous day file: {}, priming state...", previousFilePath);
 

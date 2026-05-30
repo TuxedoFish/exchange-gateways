@@ -191,6 +191,7 @@ int HyperliquidHistoricalRunner::run()
         // Prime state from the previous day's file
         tm previousDate = startDate;
         previousDate.tm_mday -= 1;
+        mktime(&previousDate);
         std::string previousFilePath = findValidFilePath(rawCapturesLoc, previousDate);
         if (!previousFilePath.empty() && boost::filesystem::exists(previousFilePath)) {
             spdlog::info("Found previous day file: {}, priming state...", previousFilePath);

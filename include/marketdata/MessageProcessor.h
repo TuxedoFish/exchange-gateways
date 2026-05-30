@@ -47,7 +47,10 @@ public:
     void setShouldOutput(bool shouldOutput);
     bool shouldOutput() const { return m_shouldOutput; }
 
-    // Security lookups — string_view overload avoids heap allocation
+    // Deterministic security ID from symbol hash — same symbol always gives same ID
+    static int hashSecurityId(std::string_view symbol);
+
+    // Security lookups — falls back to hashSecurityId if symbol not yet registered
     int getSecurityId(std::string_view symbol) const;
     com::liversedge::messages::SecurityStatusEnum::Value getSecurityStatus(int securityId) const;
     com::liversedge::messages::ConnectionStatusEnum::Value getConnectionStatus() const;
@@ -76,7 +79,6 @@ protected:
     const std::unordered_map<std::string, int, StringHash, std::equal_to<>>& getSymbolMap() const { return m_symbolToSecurityId; }
 
 private:
-    std::int32_t m_securityIdCounter{0};
     std::unordered_map<int, ProcessorSecurityInfo> m_securities;
     std::unordered_map<std::string, int, StringHash, std::equal_to<>> m_symbolToSecurityId;
     com::liversedge::messages::ConnectionStatusEnum::Value m_lastConnectionStatus{com::liversedge::messages::ConnectionStatusEnum::Value::NULL_VALUE};

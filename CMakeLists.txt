@@ -171,3 +171,7 @@ target_include_directories(gateways PRIVATE
 )
 
 add_dependencies(gateways generate_sbe_code)
+
+# Tests
+add_executable(test_l2book_parser tests/test_l2book_parser.cpp)
+target_link_libraries(test_l2book_parser hyperliquid-sdk)

@@ -6,9 +6,31 @@ MessageProcessor::MessageProcessor(SBEBinaryWriter& writer)
 {
 }
 
+int MessageProcessor::hashSecurityId(std::string_view symbol)
+{
+    size_t h = std::hash<std::string_view>{}(symbol);
+    return static_cast<int>((h & 0x7FFFFFFE) + 1); // [1, 2^31-1]
+}
+
 int MessageProcessor::createSecurity(const std::string& symbol)
 {
-    int id = m_securityIdCounter++;
+    // Already registered — return existing ID
+    auto existing = m_symbolToSecurityId.find(symbol);
+    if (existing != m_symbolToSecurityId.end())
+    {
+        return existing->second;
+    }
+
+    int id = hashSecurityId(symbol);
+
+    // Handle collision with a *different* symbol (probability ~0% with <10k securities)
+    while (m_securities.count(id))
+    {
+        spdlog::error("Security ID hash collision: {} and {} both map to {}",
+                      symbol, m_securities[id].symbol, id);
+        id = (id >= 0x7FFFFFFF) ? 1 : id + 1;
+    }
+
     m_securities[id] = ProcessorSecurityInfo{symbol, com::liversedge::messages::SecurityStatusEnum::Value::NULL_VALUE};
     m_symbolToSecurityId[symbol] = id;
     return id;
@@ -17,7 +39,7 @@ int MessageProcessor::createSecurity(const std::string& symbol)
 int MessageProcessor::getSecurityId(std::string_view symbol) const
 {
     auto it = m_symbolToSecurityId.find(symbol);
-    return it != m_symbolToSecurityId.end() ? it->second : -1;
+    return it != m_symbolToSecurityId.end() ? it->second : hashSecurityId(symbol);
 }
 
 com::liversedge::messages::SecurityStatusEnum::Value MessageProcessor::getSecurityStatus(int securityId) const
@@ -53,7 +75,6 @@ bool MessageProcessor::invalidateState(std::uint64_t timestamp)
     updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::OFFLINE, timestamp);
 
     // Reset state
-    m_securityIdCounter = 0;
     m_securities.clear();
     m_symbolToSecurityId.clear();
     return true;

@@ -22,6 +22,7 @@ done
 HDD_RAW_DIR="/mnt/data/Deribit/raw"
 SSD_RAW_DIR="/home/markl/Crypto/Deribit/raw"
 PROCESSED_DIR="/home/markl/Crypto/Deribit/processed"
+HDD_PROCESSED_DIR="/mnt/data/Deribit/processed"
 BINARY="./build/gateways"
 CONFIG_DIR="$PROJECT_DIR/config"
 TEMP_CONFIG_NAME="md-process-deribit-backfill"
@@ -97,6 +98,11 @@ fi
 
 log "Found $HDD_COUNT files on HDD, $SSD_COUNT additional on SSD"
 
+is_processed() {
+    local date_path="$1"
+    [ -f "$PROCESSED_DIR/$date_path" ] || [ -f "$HDD_PROCESSED_DIR/$date_path" ]
+}
+
 # --- Archive already-processed SSD files to HDD ---
 if [ "$DRY_RUN" = true ]; then
     # Skip archiving in test mode — read-only
@@ -106,7 +112,7 @@ for date_path in $(echo "${!DATE_SOURCE[@]}" | tr ' ' '\n' | sort); do
     if [ "${DATE_SOURCE[$date_path]}" != "ssd" ]; then
         continue
     fi
-    if [ ! -f "$PROCESSED_DIR/$date_path" ]; then
+    if ! is_processed "$date_path"; then
         continue
     fi
     ssd_file="$SSD_RAW_DIR/${date_path}.txt"
@@ -128,7 +134,7 @@ for date_path in $(echo "${!DATE_SOURCE[@]}" | tr ' ' '\n' | sort); do
     if [[ "$date_path" > "$CUTOFF_DATE" ]]; then
         continue
     fi
-    if [ -f "$PROCESSED_DIR/$date_path" ] && [ "$OVERWRITE" = false ]; then
+    if is_processed "$date_path" && [ "$OVERWRITE" = false ]; then
         continue
     fi
     DATES_TO_PROCESS+=("$date_path")

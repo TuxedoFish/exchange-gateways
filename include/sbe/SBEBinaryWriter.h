@@ -3,6 +3,8 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <cstring>
+#include <cerrno>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <mutex>
@@ -90,7 +92,8 @@ bool SBEBinaryWriter::writeMessage(T& message) {
 
         // Ensure we don't exceed buffer size
         if (totalSize > buffer_.size()) {
-            spdlog::error("Message too large for buffer. Size: {}, Buffer: {}", totalSize, buffer_.size());
+            spdlog::error("Message too large for buffer. Size: {}, Buffer: {}, file: '{}'",
+                          totalSize, buffer_.size(), filename_);
             writeMutex_.unlock(); // Release lock on error
             return false;
         }
@@ -98,7 +101,20 @@ bool SBEBinaryWriter::writeMessage(T& message) {
         // Write to file
         file_.write(buffer_.data(), totalSize);
         if (!file_.good()) {
-            spdlog::error("Error writing to file");
+            int savedErrno = errno;
+            boost::system::error_code ec;
+            auto spaceInfo = boost::filesystem::space(
+                boost::filesystem::path(filename_).parent_path(), ec);
+            spdlog::error("Error writing to file '{}': {} (errno={}), "
+                          "writeSize={}, filePos={}, "
+                          "diskAvailable={}, diskCapacity={}, messageCount={}",
+                          filename_,
+                          std::strerror(savedErrno), savedErrno,
+                          totalSize,
+                          static_cast<int64_t>(file_.tellp()),
+                          ec ? -1 : static_cast<int64_t>(spaceInfo.available),
+                          ec ? -1 : static_cast<int64_t>(spaceInfo.capacity),
+                          messageCount_);
             writeMutex_.unlock(); // Release lock on error
             return false;
         }
@@ -120,7 +136,8 @@ bool SBEBinaryWriter::writeMessage(T& message) {
 
     }
     catch (const std::exception& e) {
-        spdlog::error("Error writing message: {}", e.what());
+        spdlog::error("Error writing message to '{}': {}, messageCount={}",
+                      filename_, e.what(), messageCount_);
         writeMutex_.unlock(); // Release lock on exception
         return false;
     }

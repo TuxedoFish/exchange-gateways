@@ -16,6 +16,7 @@ void HyperliquidGWApplication::start()
         m_config.getString("hl_account_address"),
         m_config.getString("hl_private_key")
     };
+    m_apiConfig.dexes.insert("xyz");
 
     m_iocTimeoutSecs = m_config.getInt("hl_ioc_timeout_secs", 5);
 

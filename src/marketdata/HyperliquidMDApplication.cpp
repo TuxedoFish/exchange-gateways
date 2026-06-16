@@ -46,6 +46,7 @@ void HyperliquidMDApplication::onL2Book(const hyperliquid::L2BookSnapshot& snaps
     if (m_processor.shouldRefetchOutcomeMeta())
     {
         spdlog::info("Refetching outcomeMeta after expiry delay");
+        m_processor.clearPendingRefetch();
         HyperliquidMDApplicationBase::refetchOutcomeMeta();
     }
 

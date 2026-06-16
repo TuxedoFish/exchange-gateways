@@ -42,6 +42,11 @@ int MessageProcessor::getSecurityId(std::string_view symbol) const
     return it != m_symbolToSecurityId.end() ? it->second : hashSecurityId(symbol);
 }
 
+bool MessageProcessor::isSecurityRegistered(std::string_view symbol) const
+{
+    return m_symbolToSecurityId.find(symbol) != m_symbolToSecurityId.end();
+}
+
 com::liversedge::messages::SecurityStatusEnum::Value MessageProcessor::getSecurityStatus(int securityId) const
 {
     auto it = m_securities.find(securityId);

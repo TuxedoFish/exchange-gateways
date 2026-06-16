@@ -52,6 +52,7 @@ public:
 
     // Security lookups — falls back to hashSecurityId if symbol not yet registered
     int getSecurityId(std::string_view symbol) const;
+    bool isSecurityRegistered(std::string_view symbol) const;
     com::liversedge::messages::SecurityStatusEnum::Value getSecurityStatus(int securityId) const;
     com::liversedge::messages::ConnectionStatusEnum::Value getConnectionStatus() const;
 

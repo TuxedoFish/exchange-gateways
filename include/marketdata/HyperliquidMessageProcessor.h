@@ -27,6 +27,7 @@ public:
     bool hasExpiredOutcomes() const;
     void removeExpiredOutcomes();
     bool shouldRefetchOutcomeMeta() const;
+    void clearPendingRefetch();
 
 private:
     struct PendingAsset {

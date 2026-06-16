@@ -26,15 +26,11 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataSnapshotFullRefre
     const uint64_t timestamp = GetSendingTime(static_cast<FIX44::Message>(message));
 
     const std::string& symbol = message.getField(FIX::FIELD::Symbol);
-    int securityId = getSecurityId(symbol);
-    if (securityId == -1)
+    if (!isSecurityRegistered(symbol))
     {
-        if (getConnectionStatus() >= com::liversedge::messages::ConnectionStatusEnum::Value::STARTING)
-        {
-            spdlog::error("No matching security found for {}", symbol);
-        }
         return;
     }
+    int securityId = getSecurityId(symbol);
 
     if (!m_shouldOutput)
     {
@@ -199,6 +195,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataSnapshotFullRefre
 
     // Send out SecurityStatus - Online afterwards
     updateSecurityStatus(securityId, timestamp, com::liversedge::messages::SecurityStatusEnum::Value::ONLINE);
+    m_offlineWarned.erase(symbol);
 }
 
 void DeribitMessageProcessor::onMessage(const FIX44::MarketDataIncrementalRefresh& message, const FIX::SessionID& sessionID)
@@ -212,20 +209,19 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataIncrementalRefres
 
     // Get symbol and find security ID using hash map lookup
     const std::string& symbol = message.getField(FIX::FIELD::Symbol);
-    const int securityId = getSecurityId(symbol);
-    if (securityId == -1)
+    if (!isSecurityRegistered(symbol))
     {
-        if (getConnectionStatus() >= com::liversedge::messages::ConnectionStatusEnum::Value::STARTING)
-        {
-            spdlog::error("No matching security found for incremental update: {}", symbol);
-        }
         return;
     }
+    const int securityId = getSecurityId(symbol);
 
     // Check security status is ONLINE
     if (getSecurityStatus(securityId) != com::liversedge::messages::SecurityStatusEnum::Value::ONLINE)
     {
-        spdlog::error("Ignoring incremental update for offline security: {}", symbol);
+        if (m_offlineWarned.insert(symbol).second)
+        {
+            spdlog::warn("Ignoring incremental updates for offline security: {}", symbol);
+        }
         return;
     }
 
@@ -356,6 +352,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
 
     if (hasSpot)
     {
+        // TODO: Bug where when we didn't have spot
         // Bit of a hack but once the spreads are all processed then we are online
         updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, timestamp);
     }
@@ -366,6 +363,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::Logout& message, const FIX:
 {
     spdlog::info("Processing FIX44::Logout message");
     const uint64_t timestamp = GetSendingTime(static_cast<FIX44::Message>(message));
+    m_offlineWarned.clear();
     invalidateState(timestamp);
 }
 
@@ -380,6 +378,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::Logon& message, const FIX::
         invalidateState(timestamp);
     }
 
+    m_offlineWarned.clear();
     updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::STARTING, timestamp);
 }
 

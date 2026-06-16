@@ -128,19 +128,14 @@ void FileMessageProcessor::processIncrementalFast(std::string_view msgStr) {
     const uint64_t timestamp = parseFIXTimestampNanos(m_lightMsg.getField(52));
 
     const auto symbol = m_lightMsg.getField(55);
-    const int securityId = m_processor.getSecurityId(symbol);
-    if (securityId == -1)
+    if (!m_processor.isSecurityRegistered(symbol))
     {
-        if (m_processor.getConnectionStatus() >= com::liversedge::messages::ConnectionStatusEnum::Value::STARTING)
-        {
-            spdlog::error("No matching security found for incremental update: {}", symbol);
-        }
         return;
     }
+    const int securityId = m_processor.getSecurityId(symbol);
 
     if (m_processor.getSecurityStatus(securityId) != com::liversedge::messages::SecurityStatusEnum::Value::ONLINE)
     {
-        spdlog::error("Ignoring incremental update for offline security: {}", symbol);
         return;
     }
 
@@ -166,15 +161,11 @@ void FileMessageProcessor::processSnapshotFast(std::string_view msgStr) {
     const uint64_t timestamp = parseFIXTimestampNanos(m_lightMsg.getField(52));
 
     const auto symbol = m_lightMsg.getField(55);
-    const int securityId = m_processor.getSecurityId(symbol);
-    if (securityId == -1)
+    if (!m_processor.isSecurityRegistered(symbol))
     {
-        if (m_processor.getConnectionStatus() >= com::liversedge::messages::ConnectionStatusEnum::Value::STARTING)
-        {
-            spdlog::error("No matching security found for {}", symbol);
-        }
         return;
     }
+    const int securityId = m_processor.getSecurityId(symbol);
 
     if (!m_processor.shouldOutput())
     {

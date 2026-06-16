@@ -340,6 +340,11 @@ bool HyperliquidMessageProcessor::shouldRefetchOutcomeMeta() const
     return now >= m_lastOutcomeExpiry + REFETCH_DELAY;
 }
 
+void HyperliquidMessageProcessor::clearPendingRefetch()
+{
+    m_pendingRefetch = false;
+}
+
 void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& snapshot)
 {
     if (m_connectedTimeMs > 0 && snapshot.time + STALE_THRESHOLD_MS < m_connectedTimeMs)
@@ -347,11 +352,11 @@ void HyperliquidMessageProcessor::onL2Book(const hyperliquid::L2BookSnapshot& sn
         return;
     }
 
-    int securityId = getSecurityId(snapshot.coin);
-    if (securityId == -1)
+    if (!isSecurityRegistered(snapshot.coin))
     {
         return;
     }
+    int securityId = getSecurityId(snapshot.coin);
 
     uint64_t timestampNanos = snapshot.time * 1000 * 1000;
 
@@ -448,11 +453,11 @@ void HyperliquidMessageProcessor::onBbo(const hyperliquid::BboUpdate& update)
         return;
     }
 
-    int securityId = getSecurityId(update.coin);
-    if (securityId == -1)
+    if (!isSecurityRegistered(update.coin))
     {
         return;
     }
+    int securityId = getSecurityId(update.coin);
 
     if (getSecurityStatus(securityId) != com::liversedge::messages::SecurityStatusEnum::Value::ONLINE)
     {
@@ -518,11 +523,11 @@ void HyperliquidMessageProcessor::onTrade(const hyperliquid::Trade& trade)
         return;
     }
 
-    int securityId = getSecurityId(trade.coin);
-    if (securityId == -1)
+    if (!isSecurityRegistered(trade.coin))
     {
         return;
     }
+    int securityId = getSecurityId(trade.coin);
 
     if (!m_shouldOutput)
     {

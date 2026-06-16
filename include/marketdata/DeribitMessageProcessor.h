@@ -1,6 +1,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "MessageProcessor.h"
 #include "quickfix/Application.h"
@@ -32,4 +33,6 @@ private:
     static uint64_t GetSendingTime(FIX44::Message message);
     template<typename T>
     bool ProcessMDEntry(const T& entry, int securityId, uint64_t timestamp);
+
+    std::unordered_set<std::string> m_offlineWarned;
 };

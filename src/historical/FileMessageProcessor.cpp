@@ -53,7 +53,11 @@ void FileMessageProcessor::process(std::string_view msgStr) {
         }
 
         std::string msgType = msg.getHeader().getField(FIX::FIELD::MsgType);
-        if (msgType == FIX::MsgType_SecurityList)
+        if (msgType == FIX::MsgType_SecurityListRequest)
+        {
+            std::string reqId = msg.getField(FIX::FIELD::SecurityReqID);
+            m_processor.addPendingSecurityList(reqId);
+        } else if (msgType == FIX::MsgType_SecurityList)
         {
             m_processor.onMessage(FIX44::SecurityList(msg), m_sessionID);
         } else if (msgType == FIX::MsgType_Logon)

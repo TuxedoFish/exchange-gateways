@@ -13,6 +13,8 @@ public:
     void fromAdmin(const FIX::Message& message, const FIX::SessionID& sessionID) noexcept override;
     void fromApp(const FIX::Message& message, const FIX::SessionID& sessionID) noexcept override;
 
+    void onSecurityListRequestSent(const std::string& reqId) override;
+
 private:
     SBEBinaryWriter m_writer;
     DeribitMessageProcessor m_processor;

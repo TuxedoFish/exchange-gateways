@@ -20,3 +20,7 @@ void DeribitApplication::fromAdmin(const FIX::Message& message, const FIX::Sessi
     DeribitApplicationBase::fromApp(message, sessionID);
     m_processor.crack(message, sessionID);
 }
+
+void DeribitApplication::onSecurityListRequestSent(const std::string& reqId) {
+    m_processor.addPendingSecurityList(reqId);
+}

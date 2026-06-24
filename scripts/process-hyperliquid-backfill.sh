@@ -17,7 +17,7 @@ for arg in "$@"; do
 done
 
 # --- Paths ---
-HDD_RAW_DIR="/mnt/data/Hyperliquid"
+HDD_RAW_DIR="/mnt/data/Hyperliquid/raw"
 SSD_RAW_DIR="/home/markl/Crypto/Hyperliquid/raw"
 PROCESSED_DIR="/home/markl/Crypto/Hyperliquid/processed"
 BINARY="./build/gateways"

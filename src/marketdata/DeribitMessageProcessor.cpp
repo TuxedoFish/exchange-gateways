@@ -256,12 +256,12 @@ void DeribitMessageProcessor::onMessage(const FIX44::MarketDataIncrementalRefres
 void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, const FIX::SessionID& sessionID)
 {
     const uint64_t timestamp = GetSendingTime(static_cast<FIX44::Message>(message));
+    const std::string securityReqId = message.getField(FIX::FIELD::SecurityReqID);
 
     // Message contains multiple entries for each security
     FIX::NoRelatedSym noSecuritiesField;
     message.get(noSecuritiesField);
     int noSecurities = noSecuritiesField.getValue();
-    bool hasSpot = false;
 
     // FIX repeating groups are 1-indexed
     for (int i = 1; i < noSecurities + 1; i++)
@@ -278,11 +278,6 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
             continue;
         }
         int id = createSecurity(symbol);
-
-        if (securityType == com::liversedge::messages::SecurityType::FXSPOT)
-        {
-            hasSpot = true;
-        }
 
         if (m_shouldOutput)
         {
@@ -350,10 +345,12 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
         }
     }
 
-    if (hasSpot)
+    m_pendingSecurityLists.erase(securityReqId);
+    spdlog::info("Received SecurityList response: {} ({} remaining)", securityReqId, m_pendingSecurityLists.size());
+
+    if (m_pendingSecurityLists.empty())
     {
-        // TODO: Bug where when we didn't have spot
-        // Bit of a hack but once the spreads are all processed then we are online
+        spdlog::info("All SecurityList responses received, going ONLINE");
         updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value::ONLINE, timestamp);
     }
 
@@ -379,6 +376,7 @@ void DeribitMessageProcessor::onMessage(const FIX44::Logon& message, const FIX::
     }
 
     m_offlineWarned.clear();
+    m_pendingSecurityLists.clear();
     updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::STARTING, timestamp);
 }
 
@@ -491,6 +489,12 @@ bool DeribitMessageProcessor::ProcessMDEntry(const T& entry, int securityId, uin
 
 
     return true;
+}
+
+void DeribitMessageProcessor::addPendingSecurityList(const std::string& reqId)
+{
+    m_pendingSecurityLists.insert(reqId);
+    spdlog::info("Registered pending SecurityList: {}", reqId);
 }
 
 // Explicit template instantiations

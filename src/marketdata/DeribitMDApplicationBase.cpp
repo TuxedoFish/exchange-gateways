@@ -64,6 +64,7 @@ void DeribitApplicationBase::getSymbols()
 
     try {
         FIX::Session::sendToTarget(secListRequest, m_sessionID);
+        onSecurityListRequestSent("SYMBOLS_001");
     }
     catch (const std::exception& e) {
         spdlog::error("Error sending SecurityListRequest: {}", e.what());
@@ -74,6 +75,7 @@ void DeribitApplicationBase::getSymbols()
 
     try {
         FIX::Session::sendToTarget(secListRequest, m_sessionID);
+        onSecurityListRequestSent("SYMBOLS_002");
     }
     catch (const std::exception& e) {
         spdlog::error("Error sending SecurityListRequest: {}", e.what());
@@ -89,6 +91,7 @@ void DeribitApplicationBase::getSymbols()
 
     try {
         FIX::Session::sendToTarget(secListRequestSpot, m_sessionID);
+        onSecurityListRequestSent("SYMBOLS_003");
     }
     catch (const std::exception& e) {
         spdlog::error("Error sending SecurityListRequest: {}", e.what());

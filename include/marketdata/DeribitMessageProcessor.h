@@ -35,4 +35,8 @@ private:
     bool ProcessMDEntry(const T& entry, int securityId, uint64_t timestamp);
 
     std::unordered_set<std::string> m_offlineWarned;
+    std::unordered_set<std::string> m_pendingSecurityLists;
+
+public:
+    void addPendingSecurityList(const std::string& reqId);
 };

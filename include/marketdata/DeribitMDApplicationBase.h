@@ -53,6 +53,9 @@ private:
     void onMessage(const FIX44::MarketDataIncrementalRefresh&, const FIX::SessionID&);
     void onMessage(const FIX44::SecurityList&, const FIX::SessionID&);
 
+protected:
+    virtual void onSecurityListRequestSent(const std::string& reqId) {}
+
 };
 
 #endif

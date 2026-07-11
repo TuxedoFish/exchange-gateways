@@ -175,3 +175,32 @@ add_dependencies(gateways generate_sbe_code)
 # Tests
 add_executable(test_l2book_parser tests/test_l2book_parser.cpp)
 target_link_libraries(test_l2book_parser hyperliquid-sdk)
+
+add_executable(test_deribit_secdef
+    tests/test_deribit_secdef.cpp
+    src/marketdata/MessageProcessor.cpp
+    src/marketdata/DeribitMessageProcessor.cpp
+    src/sbe/SBEBinaryWriter.cpp
+    src/sbe/SBEUtils.cpp
+    src/historical/FileMessageProcessor.cpp
+    src/historical/MarketdataHistoricalRunnerBase.cpp
+    src/fix/FIXUtils.cpp
+    src/fix/LightFIXMessage.cpp
+    src/sbe/SBEQueuePoller.cpp
+    src/util/SimpleConfig.cpp
+    src/util/DateUtils.cpp
+    src/util/AuthHandler.cpp
+)
+target_include_directories(test_deribit_secdef PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/generated
+    ${CMAKE_SOURCE_DIR}/third_party/quickfix/include
+    ${CMAKE_SOURCE_DIR}/third_party/hyperliquid-sdk-cpp/include
+)
+target_link_libraries(test_deribit_secdef
+    quickfix hyperliquid-sdk
+    ${OPENSSL_LIBRARIES}
+    Boost::iostreams Boost::filesystem Boost::system
+    spdlog::spdlog pthread dl
+)
+add_dependencies(test_deribit_secdef generate_sbe_code)

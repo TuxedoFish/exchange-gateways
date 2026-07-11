@@ -263,6 +263,8 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
     message.get(noSecuritiesField);
     int noSecurities = noSecuritiesField.getValue();
 
+    const bool isPerpOnly = m_perpOnlyReqIds.count(securityReqId) > 0;
+
     // FIX repeating groups are 1-indexed
     for (int i = 1; i < noSecurities + 1; i++)
     {
@@ -271,12 +273,47 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
 
         const std::string& symbol = security.getField(FIX::FIELD::Symbol);
         auto securityType = SBEUtils::securityTypeFromString(security.getField(FIX::FIELD::SecurityType));
+
+        // For perp-only requests, extract underlying from symbol (e.g. TRUMP from TRUMP_USDC-PERPETUAL)
+        std::string underlying;
+        if (isPerpOnly)
+        {
+            const std::string& settlType = security.getField(FIX::FIELD::SettlType);
+            if (settlType != "0")
+            {
+                spdlog::debug("Perp filter: skipping non-perpetual {} (SettlType={})", symbol, settlType);
+                continue;
+            }
+            auto underscorePos = symbol.find("_USDC");
+            underlying = (underscorePos != std::string::npos)
+                ? symbol.substr(0, underscorePos)
+                : symbol.substr(0, symbol.find('-'));
+            if (m_perpCurrencies.find(underlying) == m_perpCurrencies.end())
+            {
+                spdlog::debug("Perp filter: skipping {} (underlying={} not in whitelist)", symbol, underlying);
+                continue;
+            }
+        }
+
         if (securityType == com::liversedge::messages::SecurityType::FXSPOT && symbol.find("BTC_USDC") == std::string::npos)
         {
             // Ignore non BTC spot instruments
             spdlog::debug("Ignoring spot instrument: {}", symbol);
             continue;
         }
+
+        // Skip USDC-settled perpetuals in non-perp-only responses — they'll be handled
+        // by the dedicated perp-only request (SYMBOLS_004) with correct currency settings
+        if (!isPerpOnly && !m_perpCurrencies.empty() && symbol.find("_USDC") != std::string::npos)
+        {
+            const std::string& settlType = security.getField(FIX::FIELD::SettlType);
+            if (settlType == "0")
+            {
+                spdlog::debug("Deferring USDC perpetual to perp-only request: {}", symbol);
+                continue;
+            }
+        }
+
         int id = createSecurity(symbol);
 
         if (m_shouldOutput)
@@ -302,6 +339,18 @@ void DeribitMessageProcessor::onMessage(const FIX44::SecurityList& message, cons
                 SBEUtils::setQty(m_securityDefinition.minSize(), security.getField(FIX::FIELD::MinTradeVol));
                 SBEUtils::setQty(m_securityDefinition.minAmount(), "0");
                 m_securityDefinition.marginingType(com::liversedge::messages::MarginingType::SPOT); // Margining always in base
+            } else if (isPerpOnly)
+            {
+                // Linear (USDC-settled) perpetual: base=CONTRACT, quote/settl=USDC, position=CONTRACT
+                m_securityDefinition.baseCurrency(com::liversedge::messages::Currency::CONTRACT);
+                m_securityDefinition.quoteCurrency(com::liversedge::messages::Currency::USDC);
+                m_securityDefinition.settlCurrency(com::liversedge::messages::Currency::USDC);
+                m_securityDefinition.positionCurrency(com::liversedge::messages::Currency::CONTRACT);
+                SBEUtils::setPrice(m_securityDefinition.contractMultiplier(), security.getField(FIX::FIELD::ContractMultiplier));
+                SBEUtils::setQty(m_securityDefinition.minSizeIncrement(), security.getField(FIX::FIELD::MinTradeVol));
+                SBEUtils::setQty(m_securityDefinition.minSize(), security.getField(FIX::FIELD::MinTradeVol));
+                SBEUtils::setQty(m_securityDefinition.minAmount(), "0");
+                m_securityDefinition.marginingType(com::liversedge::messages::MarginingType::LINEAR);
             } else
             {
                 // Really this is an inverse contract so position -> CONTRACT base -> BTC quote -> USD type -> inverted (e.g. 1 contract = 10 USD)
@@ -495,6 +544,17 @@ void DeribitMessageProcessor::addPendingSecurityList(const std::string& reqId)
 {
     m_pendingSecurityLists.insert(reqId);
     spdlog::info("Registered pending SecurityList: {}", reqId);
+}
+
+void DeribitMessageProcessor::addPerpOnlySecurityList(const std::string& reqId)
+{
+    m_perpOnlyReqIds.insert(reqId);
+    spdlog::info("Registered perp-only SecurityList: {}", reqId);
+}
+
+void DeribitMessageProcessor::setPerpCurrencies(const std::set<std::string>& currencies)
+{
+    m_perpCurrencies = currencies;
 }
 
 // Explicit template instantiations

@@ -96,6 +96,24 @@ void DeribitApplicationBase::getSymbols()
     catch (const std::exception& e) {
         spdlog::error("Error sending SecurityListRequest: {}", e.what());
     }
+
+    // Request USDC-denominated futures to pick up linear perpetuals
+    if (!m_perpCurrencies.empty())
+    {
+        FIX::Message secListRequestPerps;
+        secListRequestPerps.getHeader().setField(FIX::MsgType("x"));
+        secListRequestPerps.setField(FIX::SecurityReqID("SYMBOLS_004"));
+        secListRequestPerps.setField(FIX::SecurityListRequestType(4));
+        secListRequestPerps.setField(FIX::SecurityType("FUT"));
+
+        try {
+            FIX::Session::sendToTarget(secListRequestPerps, m_sessionID);
+            onPerpSecurityListRequestSent("SYMBOLS_004");
+        }
+        catch (const std::exception& e) {
+            spdlog::error("Error sending SecurityListRequest for perps: {}", e.what());
+        }
+    }
 }
 
 void DeribitApplicationBase::subscribe(std::vector<std::string> symbols)
@@ -159,6 +177,10 @@ void DeribitApplicationBase::onMessage(const FIX44::MarketDataIncrementalRefresh
 void DeribitApplicationBase::onMessage(const FIX44::SecurityList& message, const FIX::SessionID& sessionID) {
     FixUtils::logFixMessage("Received SecurityList: ", message);
 
+    FIX::SecurityReqID securityReqId;
+    message.get(securityReqId);
+    const bool isPerpOnly = m_perpOnlyReqIds.count(securityReqId.getString()) > 0;
+
     FIX::NoRelatedSym noSecuritiesField;
     message.get(noSecuritiesField);
     int noSecurities = noSecuritiesField.getValue();
@@ -173,6 +195,27 @@ void DeribitApplicationBase::onMessage(const FIX44::SecurityList& message, const
         FIX::Symbol symbol;
         security.get(symbol);
         auto symbolStr = symbol.getString();
+
+        // Filter perp-only requests: keep only perpetuals whose underlying is in the whitelist
+        if (isPerpOnly)
+        {
+            const std::string& settlType = security.getField(FIX::FIELD::SettlType);
+            if (settlType != "0")
+            {
+                spdlog::debug("Perp filter (subscribe): skipping non-perpetual {}", symbolStr);
+                continue;
+            }
+            auto underscorePos = symbolStr.find("_USDC");
+            std::string underlying = (underscorePos != std::string::npos)
+                ? symbolStr.substr(0, underscorePos)
+                : symbolStr.substr(0, symbolStr.find('-'));
+            if (m_perpCurrencies.find(underlying) == m_perpCurrencies.end())
+            {
+                spdlog::debug("Perp filter (subscribe): skipping {} (underlying={} not in whitelist)", symbolStr, underlying);
+                continue;
+            }
+        }
+
         if (securityType == FIX::SecurityType_FX_SPOT && symbolStr.find("BTC_USDC") == std::string::npos)
         {
             // Ignore non BTC spot instruments

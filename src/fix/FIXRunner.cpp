@@ -7,7 +7,7 @@ FIXRunner::FIXRunner(SimpleConfig& config) : config_(config)
 
 int FIXRunner::run(FIX::Application& application, const std::string& startupMessage)
 {
-    return run(application, startupMessage, ConsoleUtils::waitForUserInput, false);
+    return run(application, startupMessage, ConsoleUtils::waitForUserInput, true);
 }
 
 int FIXRunner::run(FIX::Application& application, const std::string& startupMessage, std::function<void()> mainLoop,

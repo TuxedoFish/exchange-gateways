@@ -97,6 +97,11 @@
             <validValue name="USDC" description="us dollar coin">3</validValue>
             <validValue name="CONTRACT" description="contracts">4</validValue>
             <validValue name="USDH" description="usdh">5</validValue>
+            <validValue name="TRUMP" description="trump">6</validValue>
+            <validValue name="UNI" description="uniswap">7</validValue>
+            <validValue name="ADA" description="cardano">8</validValue>
+            <validValue name="BCH" description="bitcoin cash">9</validValue>
+            <validValue name="DOGE" description="dogecoin">10</validValue>
         </enum>
 
         <enum name="MarginingType" encodingType="uint8">

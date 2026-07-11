@@ -394,6 +394,7 @@
         <field name='PriceQuoteCurrency' required='N' />
         <field name='InstrumentPricePrecision' required='N' />
         <field name='MinPriceIncrement' required='N' />
+        <field name='UnderlyingSecurityType' required='N' />
         <field name='UnderlyingSymbol' required='N' />
         <field name='IssueDate' required='N' />
         <field name='MaturityDate' required='N' />

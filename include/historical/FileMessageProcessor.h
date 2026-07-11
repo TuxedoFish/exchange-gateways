@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <set>
 #include <exception>
 #include "quickfix/Application.h"
 #include "../sbe/SBEBinaryWriter.h"
@@ -13,6 +14,8 @@ class FileMessageProcessor
 public:
     explicit FileMessageProcessor(const std::string&, DeribitMessageProcessor&, SBEBinaryWriter&);
     virtual ~FileMessageProcessor() = default;
+
+    void setPerpCurrencies(const std::set<std::string>& currencies) { m_perpCurrencies = currencies; }
 
     void process(std::string_view msgStr);
     void nextFile(std::string filePath);
@@ -33,4 +36,5 @@ private:
     DeribitMessageProcessor& m_processor;
     std::string m_msgBuffer;
     LightFIXMessage m_lightMsg;
+    std::set<std::string> m_perpCurrencies;
 };

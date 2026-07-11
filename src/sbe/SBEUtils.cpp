@@ -115,6 +115,26 @@ Currency::Value SBEUtils::currencyFromString(const std::string& currency)
     {
         return Currency::USDC;
     }
+    if (currency == "TRUMP")
+    {
+        return Currency::TRUMP;
+    }
+    if (currency == "UNI")
+    {
+        return Currency::UNI;
+    }
+    if (currency == "ADA")
+    {
+        return Currency::ADA;
+    }
+    if (currency == "BCH")
+    {
+        return Currency::BCH;
+    }
+    if (currency == "DOGE")
+    {
+        return Currency::DOGE;
+    }
     return Currency::NULL_VALUE;
 }
 

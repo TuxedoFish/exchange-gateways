@@ -14,6 +14,7 @@ public:
     void fromApp(const FIX::Message& message, const FIX::SessionID& sessionID) noexcept override;
 
     void onSecurityListRequestSent(const std::string& reqId) override;
+    void onPerpSecurityListRequestSent(const std::string& reqId) override;
 
 private:
     SBEBinaryWriter m_writer;

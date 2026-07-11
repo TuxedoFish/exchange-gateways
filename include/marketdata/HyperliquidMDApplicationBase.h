@@ -43,12 +43,14 @@ public:
 
     // hyperliquid::RestApiListener
     virtual void onMessage(const std::string& message, hyperliquid::RestEndpointType type) override;
+    virtual void onError(hyperliquid::RestEndpointType type, const std::string& errorMessage) override;
 
     // hyperliquid::RestEndpointListener
     virtual void onMeta(const hyperliquid::MetaResponse& response, std::optional<uint64_t> correlationId = std::nullopt) override;
     virtual void onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response, std::optional<uint64_t> correlationId = std::nullopt) override;
 
     void refetchOutcomeMeta();
+    void scheduleRetry(hyperliquid::RestEndpointType type);
 
 protected:
     virtual void subscribeToMarket(const std::string& coin);
@@ -65,4 +67,6 @@ private:
     std::unique_ptr<hyperliquid::RestApi> m_infoApi;
     hyperliquid::RestApiMessageParser m_restParser;
     hyperliquid::WebsocketMessageParser m_wsParser;
+    std::atomic<bool> m_metaReceived{false};
+    std::atomic<bool> m_outcomeMetaReceived{false};
 };

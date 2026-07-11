@@ -25,6 +25,7 @@ PROCESSED_DIR="/home/markl/Crypto/Deribit/processed"
 HDD_PROCESSED_DIR="/mnt/data/Deribit/processed"
 BINARY="./build/gateways"
 CONFIG_DIR="$PROJECT_DIR/config"
+BASE_CONFIG="$CONFIG_DIR/settings.md-process-deribit.txt"
 TEMP_CONFIG_NAME="md-process-deribit-backfill"
 TEMP_CONFIG="$CONFIG_DIR/settings.${TEMP_CONFIG_NAME}.txt"
 LOG_FILE="$PROJECT_DIR/log/md-process-deribit-backfill.log"
@@ -34,6 +35,8 @@ LOCK_FILE="/tmp/deribit-backfill.lock"
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
+
+PERP_CURRENCIES=$(grep '^perp_currencies=' "$BASE_CONFIG" | cut -d= -f2-)
 
 mkdir -p "$(dirname "$LOG_FILE")"
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -419,6 +422,7 @@ start_date=$config_start_yyyymmdd
 end_date=$end_yyyymmdd
 from_start=$FROM_START
 log_file_path=$LOG_FILE
+perp_currencies=$PERP_CURRENCIES
 EOF
 
     # --- 4. Run processor ---

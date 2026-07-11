@@ -1,5 +1,6 @@
 #include "../../include/historical/MarketdataHistoricalRunner.h"
 #include <spdlog/spdlog.h>
+#include <sstream>
 
 MarketdataHistoricalRunner::MarketdataHistoricalRunner(SimpleConfig& config) : MarketdataHistoricalRunnerBase(config) {
 }
@@ -23,6 +24,25 @@ int MarketdataHistoricalRunner::run() {
     SBEBinaryWriter writer{};
     DeribitMessageProcessor processor{ writer };
     FileMessageProcessor historicalProcessor{ dataDictionaryLoc, processor, writer };
+
+    // Pass perp_currencies config to historical processor
+    if (config_.hasKey("perp_currencies"))
+    {
+        std::set<std::string> perpCurrencies;
+        std::string currencies = config_.getString("perp_currencies");
+        std::istringstream ss(currencies);
+        std::string token;
+        while (std::getline(ss, token, ','))
+        {
+            token.erase(0, token.find_first_not_of(' '));
+            token.erase(token.find_last_not_of(' ') + 1);
+            if (!token.empty())
+            {
+                perpCurrencies.insert(token);
+            }
+        }
+        historicalProcessor.setPerpCurrencies(perpCurrencies);
+    }
 
     auto processLine = [&](std::string_view msgStr) {
         historicalProcessor.process(msgStr);

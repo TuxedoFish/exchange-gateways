@@ -2,6 +2,7 @@
 #include <spdlog/spdlog.h>
 #include <set>
 #include <algorithm>
+#include <thread>
 
 HyperliquidMDApplicationBase::~HyperliquidMDApplicationBase() = default;
 
@@ -64,6 +65,8 @@ void HyperliquidMDApplicationBase::onMessage(const std::string& message) {
 }
 
 void HyperliquidMDApplicationBase::onConnected() {
+    m_metaReceived = false;
+    m_outcomeMetaReceived = false;
     m_infoApi->metaAsync();
     m_infoApi->metaAsync("xyz");
     if (!m_desiredOutcomes.empty())
@@ -80,9 +83,44 @@ void HyperliquidMDApplicationBase::onMessage(const std::string& message, hyperli
     m_restParser.parse(message, type);
 }
 
+// hyperliquid::RestApiListener
+void HyperliquidMDApplicationBase::onError(hyperliquid::RestEndpointType type, const std::string& errorMessage) {
+    spdlog::warn("REST API error for {}: {}", hyperliquid::toString(type), errorMessage);
+
+    if (type == hyperliquid::RestEndpointType::Meta && !m_metaReceived) {
+        scheduleRetry(type);
+    } else if (type == hyperliquid::RestEndpointType::OutcomeMeta && !m_outcomeMetaReceived) {
+        scheduleRetry(type);
+    }
+}
+
+void HyperliquidMDApplicationBase::scheduleRetry(hyperliquid::RestEndpointType type) {
+    spdlog::info("Scheduling retry for {} in 5s", hyperliquid::toString(type));
+    std::thread([this, type]() {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        switch (type) {
+        case hyperliquid::RestEndpointType::Meta:
+            if (!m_metaReceived && m_infoApi) {
+                spdlog::info("Retrying meta request");
+                m_infoApi->metaAsync();
+            }
+            break;
+        case hyperliquid::RestEndpointType::OutcomeMeta:
+            if (!m_outcomeMetaReceived && m_infoApi) {
+                spdlog::info("Retrying outcomeMeta request");
+                m_infoApi->outcomeMetaAsync();
+            }
+            break;
+        default:
+            break;
+        }
+    }).detach();
+}
+
 // hyperliquid::RestEndpointListener
 void HyperliquidMDApplicationBase::onMeta(const hyperliquid::MetaResponse& response,
                                            std::optional<uint64_t> correlationId) {
+    m_metaReceived = true;
     m_universe = response.universe;
     spdlog::info("Loaded {} assets", m_universe.size());
 
@@ -106,6 +144,7 @@ void HyperliquidMDApplicationBase::refetchOutcomeMeta()
 void HyperliquidMDApplicationBase::onOutcomeMeta(const hyperliquid::OutcomeMetaResponse& response,
                                                    std::optional<uint64_t> correlationId)
 {
+    m_outcomeMetaReceived = true;
     spdlog::info("Loaded {} outcomes", response.outcomes.size());
 
     for (const auto& outcome : response.outcomes)

@@ -57,6 +57,17 @@ void FileMessageProcessor::process(std::string_view msgStr) {
         {
             std::string reqId = msg.getField(FIX::FIELD::SecurityReqID);
             m_processor.addPendingSecurityList(reqId);
+
+            // Detect perp-only requests: SecurityType=FUT without a Currency filter
+            // (SYMBOLS_001 has Currency=BTC, SYMBOLS_004 has no Currency field)
+            if (!m_perpCurrencies.empty()
+                && msg.isSetField(FIX::FIELD::SecurityType)
+                && msg.getField(FIX::FIELD::SecurityType) == "FUT"
+                && !msg.isSetField(FIX::FIELD::Currency))
+            {
+                m_processor.addPerpOnlySecurityList(reqId);
+                m_processor.setPerpCurrencies(m_perpCurrencies);
+            }
         } else if (msgType == FIX::MsgType_SecurityList)
         {
             m_processor.onMessage(FIX44::SecurityList(msg), m_sessionID);

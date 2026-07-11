@@ -20,6 +20,7 @@ done
 HDD_RAW_DIR="/mnt/data/Hyperliquid/raw"
 SSD_RAW_DIR="/home/markl/Crypto/Hyperliquid/raw"
 PROCESSED_DIR="/home/markl/Crypto/Hyperliquid/processed"
+HDD_PROCESSED_DIR="/mnt/data/Hyperliquid/processed"
 BINARY="./build/gateways"
 CONFIG_DIR="$PROJECT_DIR/config"
 BASE_CONFIG="$CONFIG_DIR/settings.md-process-hyperliquid.txt"
@@ -106,8 +107,8 @@ for date_path in $(echo "${!DATE_SOURCE[@]}" | tr ' ' '\n' | sort); do
     if [ "${DATE_SOURCE[$date_path]}" != "ssd" ]; then
         continue
     fi
-    # Only archive if already processed
-    if [ ! -f "$PROCESSED_DIR/$date_path" ]; then
+    # Only archive if already processed (on either SSD or HDD)
+    if [ ! -f "$PROCESSED_DIR/$date_path" ] && [ ! -f "$HDD_PROCESSED_DIR/$date_path" ]; then
         continue
     fi
     ssd_file="$SSD_RAW_DIR/${date_path}.txt"
@@ -130,9 +131,11 @@ for date_path in $(echo "${!DATE_SOURCE[@]}" | tr ' ' '\n' | sort); do
         continue
     fi
 
-    # Skip already processed (unless --overwrite)
-    if [ -f "$PROCESSED_DIR/$date_path" ] && [ "$OVERWRITE" = false ]; then
-        continue
+    # Skip already processed (unless --overwrite) — check both SSD and HDD
+    if [ "$OVERWRITE" = false ]; then
+        if [ -f "$PROCESSED_DIR/$date_path" ] || [ -f "$HDD_PROCESSED_DIR/$date_path" ]; then
+            continue
+        fi
     fi
 
     DATES_TO_PROCESS+=("$date_path")

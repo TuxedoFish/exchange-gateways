@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 
 #include "MessageProcessor.h"
 #include "quickfix/Application.h"
@@ -36,7 +37,11 @@ private:
 
     std::unordered_set<std::string> m_offlineWarned;
     std::unordered_set<std::string> m_pendingSecurityLists;
+    std::unordered_set<std::string> m_perpOnlyReqIds;
+    std::set<std::string> m_perpCurrencies;
 
 public:
     void addPendingSecurityList(const std::string& reqId);
+    void addPerpOnlySecurityList(const std::string& reqId);
+    void setPerpCurrencies(const std::set<std::string>& currencies);
 };

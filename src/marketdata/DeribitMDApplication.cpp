@@ -24,3 +24,10 @@ void DeribitApplication::fromAdmin(const FIX::Message& message, const FIX::Sessi
 void DeribitApplication::onSecurityListRequestSent(const std::string& reqId) {
     m_processor.addPendingSecurityList(reqId);
 }
+
+void DeribitApplication::onPerpSecurityListRequestSent(const std::string& reqId) {
+    DeribitApplicationBase::onPerpSecurityListRequestSent(reqId);
+    m_processor.addPendingSecurityList(reqId);
+    m_processor.addPerpOnlySecurityList(reqId);
+    m_processor.setPerpCurrencies(m_perpCurrencies);
+}

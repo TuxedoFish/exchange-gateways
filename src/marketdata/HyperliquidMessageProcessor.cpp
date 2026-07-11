@@ -543,7 +543,7 @@ void HyperliquidMessageProcessor::onTrade(const hyperliquid::Trade& trade)
     m_mdUpdate.securityId(securityId);
     m_mdUpdate.timestamp(trade.time * 1000 * 1000); // nanos
     m_mdUpdate.updateType(com::liversedge::messages::MDUpdateType::TRADE);
-    m_mdUpdate.side(trade.side == 'B' ? com::liversedge::messages::MDSide::BID : com::liversedge::messages::MDSide::ASK);
+    m_mdUpdate.side(trade.side == 'B' ? com::liversedge::messages::MDSide::ASK : com::liversedge::messages::MDSide::BID);
     m_mdUpdate.action(com::liversedge::messages::MDUpdateAction::Value::NULL_VALUE);
     SBEUtils::setPrice(m_mdUpdate.price(), trade.px);
     SBEUtils::setQty(m_mdUpdate.qty(), trade.sz);

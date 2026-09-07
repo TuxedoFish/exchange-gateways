@@ -2,6 +2,57 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <csignal>
+#include <cstdlib>
+#include <execinfo.h>
+#include <unistd.h>
+
+static void crashHandler(int signal)
+{
+    // Write directly to stderr in case spdlog is broken
+    const char* name = "UNKNOWN";
+    switch (signal) {
+        case SIGSEGV: name = "SIGSEGV"; break;
+        case SIGABRT: name = "SIGABRT"; break;
+        case SIGFPE:  name = "SIGFPE";  break;
+        case SIGBUS:  name = "SIGBUS";  break;
+        case SIGILL:  name = "SIGILL";  break;
+    }
+
+    // Backtrace (async-signal-safe enough for crash diagnostics)
+    void* frames[64];
+    int nframes = backtrace(frames, 64);
+
+    // Try spdlog first (may work if heap isn't corrupted)
+    spdlog::critical("Fatal signal {} ({}) received", name, signal);
+    spdlog::critical("Backtrace ({} frames):", nframes);
+
+    char** symbols = backtrace_symbols(frames, nframes);
+    if (symbols) {
+        for (int i = 0; i < nframes; i++) {
+            spdlog::critical("  [{}] {}", i, symbols[i]);
+        }
+        free(symbols);
+    }
+    spdlog::default_logger()->flush();
+
+    // Also dump raw backtrace to stderr as fallback
+    fprintf(stderr, "\nFatal signal %s (%d) - backtrace:\n", name, signal);
+    backtrace_symbols_fd(frames, nframes, STDERR_FILENO);
+
+    // Re-raise to get default behaviour (core dump if enabled)
+    std::signal(signal, SIG_DFL);
+    raise(signal);
+}
+
+static void installCrashHandlers()
+{
+    std::signal(SIGSEGV, crashHandler);
+    std::signal(SIGABRT, crashHandler);
+    std::signal(SIGFPE,  crashHandler);
+    std::signal(SIGBUS,  crashHandler);
+    std::signal(SIGILL,  crashHandler);
+}
 
 static void setupLogging(const SimpleConfig& config)
 {
@@ -31,6 +82,7 @@ static void setupLogging(const SimpleConfig& config)
 int main(int argc, char* argv[])
 {
     spdlog::set_level(spdlog::level::info);
+    installCrashHandlers();
 
     CmdLineOptions options(argc, argv);
     std::string applicationName = "UNSET";

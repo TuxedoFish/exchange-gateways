@@ -112,7 +112,7 @@ int AppRunner::runMarketdataHistoricalStorage()
         FIXRunner fixRunner(config_);
         std::string startupMessage = "Publishing raw FIX messages to: " + config_.getString("md_raw_file_path");
 
-        return fixRunner.run(application, startupMessage);
+        return fixRunner.run(application, startupMessage, ConsoleUtils::waitForUserInput, false);
     }
     if (exchangeName == "hyperliquid")
     {

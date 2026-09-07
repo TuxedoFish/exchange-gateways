@@ -106,13 +106,19 @@ is_processed() {
     [ -f "$PROCESSED_DIR/$date_path" ] || [ -f "$HDD_PROCESSED_DIR/$date_path" ]
 }
 
-# --- Archive already-processed SSD files to HDD ---
+# --- Clean up SSD raw files that are already processed ---
 if [ "$DRY_RUN" = true ]; then
     # Skip archiving in test mode — read-only
     :
 else
 for date_path in $(echo "${!DATE_SOURCE[@]}" | tr ' ' '\n' | sort); do
     if [ "${DATE_SOURCE[$date_path]}" != "ssd" ]; then
+        # HDD-origin file — check for leftover SSD copy from a previous run
+        ssd_file="$SSD_RAW_DIR/${date_path}.txt"
+        if [ -f "$ssd_file" ] && is_processed "$date_path"; then
+            log "  Removing leftover SSD copy (HDD original exists): $ssd_file"
+            rm -f "$ssd_file"
+        fi
         continue
     fi
     if ! is_processed "$date_path"; then

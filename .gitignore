@@ -17,4 +17,5 @@ store/
 
 # Settings
 config/settings.*
+config/*.cfg
 !config/settings.example.txt

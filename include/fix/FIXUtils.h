@@ -1,8 +1,8 @@
 # pragma once
 
 #include <cstdint>
-#include <iostream>
 #include <string>
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <chrono>
 #include <sstream>

@@ -1,6 +1,6 @@
 #include "../../include/gateway/RefDataHolder.h"
 #include "../../generated/com_liversedge_messages/ActionEnum.h"
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 void RefDataHolder::onSecurityDefinition(com::liversedge::messages::SecurityDefinition& decoder, std::uint64_t timestamp)
 {
@@ -10,11 +10,16 @@ void RefDataHolder::onSecurityDefinition(com::liversedge::messages::SecurityDefi
     if (action == com::liversedge::messages::ActionEnum::ADD)
     {
         auto securityInfo = std::make_unique<SecurityInfo>(decoder);
-        std::cout << "Added security: " << securityInfo->toString() << std::endl;
+        spdlog::info("Added security: {}", securityInfo->toString());
 
-        // Build reverse lookup map
+        // Build reverse lookup maps
         std::string symbol = securityInfo->getSymbol();
+        std::string marketSymbol = securityInfo->getMarketSymbol();
         m_symbolToSecurityId[symbol] = securityId;
+        if (marketSymbol != symbol)
+        {
+            m_symbolToSecurityId[marketSymbol] = securityId;
+        }
         m_securities[securityId] = std::move(securityInfo);
     }
     else if (action == com::liversedge::messages::ActionEnum::REMOVE)
@@ -22,8 +27,8 @@ void RefDataHolder::onSecurityDefinition(com::liversedge::messages::SecurityDefi
         // Remove from both maps
         auto it = m_securities.find(securityId);
         if (it != m_securities.end() && it->second) {
-            std::string symbol = it->second->getSymbol();
-            m_symbolToSecurityId.erase(symbol);
+            m_symbolToSecurityId.erase(it->second->getSymbol());
+            m_symbolToSecurityId.erase(it->second->getMarketSymbol());
         }
         m_securities.erase(securityId);
     }

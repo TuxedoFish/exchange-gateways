@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string_view>
 #include <unordered_map>
 #include "quickfix/Application.h"
 #include "quickfix/MessageCracker.h"
@@ -27,30 +28,42 @@ struct ProcessorSecurityInfo
     com::liversedge::messages::SecurityStatusEnum::Value status;
 };
 
-// Caps levels to 5000 to ensure they fit in 128kb buffer
+// Caps levels to 50 to ensure they fit in 128kb buffer
 constexpr int MAX_LEVELS = 50;
 
-class MessageProcessor : public FIX::MessageCracker
+// Transparent hash: allows unordered_map<string,...> to be queried with string_view
+struct StringHash {
+    using is_transparent = void;
+    size_t operator()(std::string_view sv) const { return std::hash<std::string_view>{}(sv); }
+    size_t operator()(const std::string& s) const { return std::hash<std::string_view>{}(std::string_view{s}); }
+};
+
+class MessageProcessor
 {
 public:
     explicit MessageProcessor(SBEBinaryWriter& writer);
-    ~MessageProcessor() override = default;
-
-    void onMessage(const FIX44::MarketDataRequest&, const FIX::SessionID&) override;
-    void onMessage(const FIX44::MarketDataRequestReject&, const FIX::SessionID&) override;
-    void onMessage(const FIX44::MarketDataSnapshotFullRefresh&, const FIX::SessionID&) override;
-    void onMessage(const FIX44::MarketDataIncrementalRefresh&, const FIX::SessionID&) override;
-    void onMessage(const FIX44::SecurityList&, const FIX::SessionID&) override;
-    void onMessage(const FIX44::Logout&, const FIX::SessionID&) override;
-    void onMessage(const FIX44::Logon&, const FIX::SessionID&) override;
+    ~MessageProcessor() = default;
 
     void setShouldOutput(bool shouldOutput);
+    bool shouldOutput() const { return m_shouldOutput; }
 
-private:
+    // Deterministic security ID from symbol hash — same symbol always gives same ID
+    static int hashSecurityId(std::string_view symbol);
+
+    // Security lookups — falls back to hashSecurityId if symbol not yet registered
+    int getSecurityId(std::string_view symbol) const;
+    bool isSecurityRegistered(std::string_view symbol) const;
+    com::liversedge::messages::SecurityStatusEnum::Value getSecurityStatus(int securityId) const;
+    com::liversedge::messages::ConnectionStatusEnum::Value getConnectionStatus() const;
+
+    // SBE message access for fast-path writers
+    com::liversedge::messages::MDUpdate& mdUpdate() { return m_mdUpdate; }
+    com::liversedge::messages::MDFullBook& mdFullBook() { return m_mdFullBook; }
+
+    bool updateSecurityStatus(int securityId, std::uint64_t timestamp, com::liversedge::messages::SecurityStatusEnum::Value newStatus);
+
+protected:
     SBEBinaryWriter& m_writer;
-    std::int32_t securityIdCounter;
-    std::vector<ProcessorSecurityInfo> securitiesInfo;
-    std::unordered_map<std::string, int> m_symbolToSecurityId;
     com::liversedge::messages::ConnectionStatus m_connectionStatus;
     com::liversedge::messages::SecurityDefinition m_securityDefinition;
     com::liversedge::messages::SecurityStatus m_securityStatus;
@@ -58,11 +71,16 @@ private:
     com::liversedge::messages::MDUpdate m_mdUpdate;
     bool m_shouldOutput = true;
 
-    bool UpdateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value value, std::uint64_t timestamp);
-    bool UpdateSecurityStatus(int securityId, std::uint64_t timestamp, com::liversedge::messages::SecurityStatusEnum::Value newStatus);
-    bool InvalidateState(std::uint64_t timestamp);
-    bool RemoveSecurity(int securityId);
-    static uint64_t GetSendingTime(FIX44::Message message);
-    template<typename T>
-    bool ProcessMDEntry(const T& entry, int securityId, uint64_t timestamp);
+    int createSecurity(const std::string& symbol);
+
+    bool updateConnectionStatus(com::liversedge::messages::ConnectionStatusEnum::Value value, std::uint64_t timestamp);
+    bool invalidateState(std::uint64_t timestamp);
+    bool removeSecurity(int securityId);
+
+    const std::unordered_map<std::string, int, StringHash, std::equal_to<>>& getSymbolMap() const { return m_symbolToSecurityId; }
+
+private:
+    std::unordered_map<int, ProcessorSecurityInfo> m_securities;
+    std::unordered_map<std::string, int, StringHash, std::equal_to<>> m_symbolToSecurityId;
+    com::liversedge::messages::ConnectionStatusEnum::Value m_lastConnectionStatus{com::liversedge::messages::ConnectionStatusEnum::Value::NULL_VALUE};
 };

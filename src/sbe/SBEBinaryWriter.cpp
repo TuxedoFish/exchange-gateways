@@ -29,7 +29,15 @@ void SBEBinaryWriter::openNewFile(const std::string& filename, bool append) {
     if (!file_.is_open()) {
         throw std::runtime_error("Failed to open file for writing: " + filename_);
     }
-    std::cout << (append ? "Opened" : "Created") << " binary file: " << filename_ << std::endl;
+
+    std::string indexFilename = filename + ".idx";
+    indexFile_.open(indexFilename, mode);
+    if (!indexFile_.is_open()) {
+        file_.close();
+        throw std::runtime_error("Failed to open index file for writing: " + indexFilename);
+    }
+
+    spdlog::info("{} binary file: {}", (append ? "Opened" : "Created"), filename_);
 }
 
 // Flush and close file
@@ -38,8 +46,13 @@ void SBEBinaryWriter::close() {
     if (file_.is_open()) {
         file_.flush();
         file_.close();
-        std::cout << "Closed file " << filename_ << " after writing "
-            << messageCount_ << " messages" << std::endl;
+    }
+    if (indexFile_.is_open()) {
+        indexFile_.flush();
+        indexFile_.close();
+    }
+    if (messageCount_ > 0) {
+        spdlog::info("Closed file {} after writing {} messages", filename_, messageCount_);
     }
     writeMutex_.unlock();
 }
@@ -51,9 +64,19 @@ const std::string& SBEBinaryWriter::getFilename() const { return filename_; }
 // Check if file is open and ready
 bool SBEBinaryWriter::isOpen() const { return file_.is_open(); }
 
+void SBEBinaryWriter::setBatchMode(bool enabled) { batchMode_ = enabled; }
+
+void SBEBinaryWriter::flushNow() {
+    std::lock_guard<std::mutex> lock(writeMutex_);
+    flush();
+}
+
 // Private flush to disk - called only while mutex is held
 void SBEBinaryWriter::flush() {
     if (file_.is_open()) {
         file_.flush();
+    }
+    if (indexFile_.is_open()) {
+        indexFile_.flush();
     }
 }

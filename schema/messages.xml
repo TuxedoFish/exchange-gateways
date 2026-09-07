@@ -42,9 +42,14 @@
             <type name="day" primitiveType="uint8"/>
         </composite>
 
+        <composite name="Time" description="Time of day as HH:MM.">
+            <type name="hour" primitiveType="uint8"/>
+            <type name="minute" primitiveType="uint8"/>
+        </composite>
+
         <composite name="Qty">
             <type name="mantissa" primitiveType="int64" description="Mantissa of Decimal number"/>
-            <type name="exponent" primitiveType="int8" presence="constant" description="Exponent of Decimal number">-4</type>
+            <type name="exponent" primitiveType="int8" presence="constant" description="Exponent of Decimal number">-8</type>
         </composite>
 
         <composite name="Price">
@@ -56,12 +61,16 @@
             <validValue name="REGULAR" description="regular">0</validValue>
             <validValue name="W1" description="week">1</validValue>
             <validValue name="M1" description="monthly">2</validValue>
-            <validValue name="M3" description="3 monthly">3</validValue>
+            <validValue name="M3" description="quarterly">3</validValue>
+            <validValue name="D1" description="daily">4</validValue>
         </enum>
 
         <enum name="SecurityType" encodingType="uint8">
             <validValue name="FUT" description="future">0</validValue>
             <validValue name="FUTCO" description="future combination">1</validValue>
+            <validValue name="FXSPOT" description="spot">2</validValue>
+            <validValue name="PREDICTION_MARKET" description="prediction market">3</validValue>
+            <validValue name="OPT" description="option">4</validValue>
         </enum>
 
         <enum name="ActionEnum" encodingType="uint8">
@@ -85,6 +94,20 @@
             <validValue name="USD" description="us dollar">0</validValue>
             <validValue name="BTC" description="bitcoin">1</validValue>
             <validValue name="ETH" description="ethereum">2</validValue>
+            <validValue name="USDC" description="us dollar coin">3</validValue>
+            <validValue name="CONTRACT" description="contracts">4</validValue>
+            <validValue name="USDH" description="usdh">5</validValue>
+            <validValue name="TRUMP" description="trump">6</validValue>
+            <validValue name="UNI" description="uniswap">7</validValue>
+            <validValue name="ADA" description="cardano">8</validValue>
+            <validValue name="BCH" description="bitcoin cash">9</validValue>
+            <validValue name="DOGE" description="dogecoin">10</validValue>
+        </enum>
+
+        <enum name="MarginingType" encodingType="uint8">
+            <validValue name="SPOT" description="Spot contracts">0</validValue>
+            <validValue name="LINEAR" description="Contracts denominated in a linear way">1</validValue>
+            <validValue name="INVERSE" description="Contracts denominated in an inverse way">2</validValue>
         </enum>
 
         <enum name="MDUpdateType" encodingType="uint8">
@@ -101,6 +124,16 @@
             <validValue name="NEW" description="New level">0</validValue>
             <validValue name="CHANGE" description="Update existing level">1</validValue>
             <validValue name="DELETE" description="Remove level">2</validValue>
+        </enum>
+
+        <enum name="PutOrCall" encodingType="uint8">
+            <validValue name="PUT" description="put">0</validValue>
+            <validValue name="CALL" description="call">1</validValue>
+        </enum>
+
+        <enum name="TradeCondition" encodingType="uint8">
+            <validValue name="NORMAL" description="normal trade">0</validValue>
+            <validValue name="LIQUIDATION" description="liquidation trade">1</validValue>
         </enum>
 
         <enum name="Side" encodingType="uint8">
@@ -165,12 +198,14 @@
     </sbe:message>
 
     <sbe:message name="SecurityDefinition" id="101" description="Security Definition Message">
+        <field name="timestamp" id="13" type="uint64" description="Timestamp in nanoseconds."/>
         <field name="id" id="1" type="int32" description="Internal security identifier."/>
-        <field name="currency" id="3" type="Currency" description="Currency used for pricing"/>
-        <field name="commCurrency" id="4" type="Currency" description="Currency used for commission"/>
+        <field name="baseCurrency" id="3" type="Currency" description="Currency used for pricing"/>
+        <field name="quoteCurrency" id="4" type="Currency" description="Currency used for commission"/>
         <field name="settlCurrency" id="5" type="Currency" description="Currency of settlement denomination."/>
         <field name="settlType" id="6" type="SettlType" description="Settlement period."/>
         <field name="maturityDate" id="7" type="Date" description="Date of maturity."/>
+        <field name="maturityTime" id="19" type="Time" description="Time of maturity (UTC)."/>
         <field name="minPriceIncrement" id="8" type="Price" description="Minimum price increment."/>
         <field name="instrumentPricePrecision" id="9" type="int8"
                description="Number of Decimal places for instrument prices."/>
@@ -179,9 +214,17 @@
                description="Number of USD the contract represents."/>
         <field name="securityType" id="12" type="SecurityType"
                description="Type of instrument i.e spread or outright."/>
-        <field name="timestamp" id="13" type="uint64" description="Timestamp in nanoseconds."/>
         <field name="action" id="14" type="ActionEnum" description="Whether this security is being added or removed"/>
+        <field name="minSize" id="15" type="Qty" description="Minimum size on order."/>
+        <field name="minAmount" id="16" type="Qty" description="Minimum amount on order."/>
+        <field name="marginingType" id="17" type="MarginingType" description="Margining type (for perps)"/>
+        <field name="positionCurrency" id="18" type="Currency" description="Currency used for position"/>
+        <field name="strikePrice" id="21" type="Price" presence="optional"
+               description="Strike price for options/prediction markets."/>
+        <field name="putOrCall" id="22" type="PutOrCall" presence="optional"
+               description="Put or call."/>
         <field name="symbol" id="2" type="VarStringEncoding" description="Security symbol."/>
+        <field name="marketSymbol" id="20" type="VarStringEncoding" description="Exchange-level asset identifier for order routing."/>
     </sbe:message>
 
     <sbe:message name="SecurityStatus" id="102" description="Security Definition Message">
@@ -191,19 +234,21 @@
     </sbe:message>
 
     <sbe:message name="MDUpdate" id="103" description="Market Data Incremental Update">
-        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <field name="timestamp" id="2" type="uint64" description="Timestamp in nanoseconds."/>
+        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <field name="updateType" id="3" type="MDUpdateType" description="Type of market data update."/>
         <field name="side" id="4" type="MDSide" description="Side of the market."/>
         <field name="price" id="5" type="Price" description="Price level."/>
         <field name="qty" id="6" type="Qty" description="Quantity at price level."/>
         <field name="action" id="7" type="MDUpdateAction" presence="optional" description="Action for book updates (ignored for trades)."/>
         <field name="tradeId" id="8" type="uint64" presence="optional" description="Trade identifier (only for trade updates)."/>
+        <field name="tradeCondition" id="9" type="TradeCondition" presence="optional"
+               description="Trade condition (e.g. liquidation)."/>
     </sbe:message>
 
     <sbe:message name="MDFullBook" id="104" description="Market Data Full Book Snapshot">
-        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <field name="timestamp" id="2" type="uint64" description="Timestamp in nanoseconds."/>
+        <field name="securityId" id="1" type="int32" description="Internal security identifier."/>
         <group name="bidLevels" id="3" dimensionType="GroupSizeEncoding" description="Bid levels">
             <field name="price" id="1" type="Price" description="Bid price."/>
             <field name="qty" id="2" type="Qty" description="Bid quantity."/>

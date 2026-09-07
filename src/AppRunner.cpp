@@ -1,21 +1,42 @@
 #include "../include/AppRunner.h"
 #include "../include/gateway/RefDataHolder.h"
+#include <spdlog/spdlog.h>
+#include "../include/marketdata/HyperliquidMDApplication.h"
 #include "../include/sbe/SBEBinaryWriter.h"
+#include "../include/util/ConsoleUtils.h"
 #include "../include/util/SimpleConfig.h"
+#include "../include/historical/HyperliquidHistoricalRunner.h"
 
-AppRunner::AppRunner(const SimpleConfig& config) : config_{ config } {
+AppRunner::AppRunner(SimpleConfig& config) : config_{config}
+{
 }
 
 int AppRunner::runMarketdata()
 {
-    // Create application
-    MDApplication application(config_);
+    std::string exchangeName = (config_.getString("exchange_name", "UNSET"));
 
-    // Create FIX runner and start session
-    FIXRunner fixRunner(config_);
-    std::string startupMessage = "Publishing messages to: " + config_.getString("md_file_path");
+    if (exchangeName == "deribit") {
+        // Create application
+        DeribitApplication application(config_);
 
-    return fixRunner.run(application, startupMessage);
+        // Create FIX runner and start session
+        FIXRunner fixRunner(config_);
+        std::string startupMessage = "Publishing messages to: " + config_.getString("md_file_path");
+
+        return fixRunner.run(application, startupMessage);
+    }
+    if (exchangeName == "hyperliquid")
+    {
+        HyperliquidMDApplication application(config_);
+        application.start();
+
+        spdlog::info("Publishing messages to: {}", config_.getString("md_file_path"));
+        ConsoleUtils::waitForUserInput();
+        return 1;
+    }
+
+    spdlog::error("Unrecognized exchange type: {}", exchangeName);
+    return 1;
 }
 
 int AppRunner::runGateway()
@@ -25,31 +46,85 @@ int AppRunner::runGateway()
 
     // Create SBE writer
     SBEBinaryWriter sbeWriter;
-    sbeWriter.openNewFile(config_.getString("gw_outbound_file_path") + kPathSeparator + "messages.sbe", true);
+    sbeWriter.openNewFile(config_.getString("gw_outbound_file_path") + kPathSeparator + "messages.sbe");
 
-    // Create application
-    GWApplication application(config_, refDataHolder, sbeWriter);
+    std::string exchangeName = config_.getString("exchange_name", "UNSET");
 
-    // Create FIX runner and gateway runner (passing application reference)
-    FIXRunner fixRunner(config_);
-    GWRunner gatewayRunner(config_, application, refDataHolder, sbeWriter);
-    std::string startupMessage = "Publishing inbound executions to: " + config_.getString("gw_inbound_file_path");
+    if (exchangeName == "deribit")
+    {
+        // Create application
+        DeribitGWApplication application(config_, refDataHolder, sbeWriter);
 
-    return fixRunner.run(application, startupMessage, [&gatewayRunner]() { gatewayRunner.run(); }, true);
+        // Create FIX runner and gateway runner (passing application reference)
+        FIXRunner fixRunner(config_);
+        DeribitOrdersHandler ordersHandler(refDataHolder, application, sbeWriter);
+        GWRunner gatewayRunner(config_, ordersHandler, refDataHolder, sbeWriter);
+        std::string startupMessage = "Publishing inbound executions to: " + config_.getString("gw_inbound_file_path");
+
+        return fixRunner.run(application, startupMessage, [&gatewayRunner]() { gatewayRunner.run(); }, true);
+    }
+    if (exchangeName == "hyperliquid")
+    {
+        HyperliquidGWApplication application(config_, refDataHolder, sbeWriter);
+        application.start();
+
+        HyperliquidOrdersHandler ordersHandler(refDataHolder, application, sbeWriter);
+        application.setOrdersHandler(&ordersHandler);
+        GWRunner gatewayRunner(config_, ordersHandler, refDataHolder, sbeWriter);
+        gatewayRunner.run();
+
+        application.stop();
+        return 0;
+    }
+
+    spdlog::error("Unrecognized exchange type: {}", exchangeName);
+    return 1;
 }
 
-int AppRunner::runProcessRawMarketdata() {
+int AppRunner::runProcessRawMarketdata()
+{
+    std::string exchangeName = config_.getString("exchange_name", "deribit");
+
+    if (exchangeName == "hyperliquid")
+    {
+        return runProcessRawHyperliquidMarketdata();
+    }
+
     MarketdataHistoricalRunner runner(config_);
     return runner.run();
 }
 
-int AppRunner::runMarketdataHistoricalStorage() {
-    // Create application
-    ApplicationPersister application(config_);
+int AppRunner::runProcessRawHyperliquidMarketdata()
+{
+    HyperliquidHistoricalRunner runner(config_);
+    return runner.run();
+}
 
-    // Create FIX runner and start session
-    FIXRunner fixRunner(config_);
-    std::string startupMessage = "Publishing raw FIX messages to: " + config_.getString("md_raw_fix_file_path");
+int AppRunner::runMarketdataHistoricalStorage()
+{
+    std::string exchangeName = config_.getString("exchange_name", "UNSET");
 
-    return fixRunner.run(application, startupMessage);
+    if (exchangeName == "deribit") {
+        // Create application
+        DeribitPersister application(config_);
+
+        // Create FIX runner and start session
+        FIXRunner fixRunner(config_);
+        std::string startupMessage = "Publishing raw FIX messages to: " + config_.getString("md_raw_file_path");
+
+        return fixRunner.run(application, startupMessage, ConsoleUtils::waitForUserInput, false);
+    }
+    if (exchangeName == "hyperliquid")
+    {
+        HyperliquidPersister application(config_);
+        application.start();
+
+        spdlog::info("Publishing raw WS messages to: {}", config_.getString("md_raw_file_path"));
+        ConsoleUtils::waitForUserInput();
+        application.stop();
+        return 1;
+    }
+
+    spdlog::error("Unrecognized exchange type: {}", exchangeName);
+    return 1;
 }

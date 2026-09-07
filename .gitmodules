@@ -1,0 +1,7 @@
+[submodule "third_party/hyperliquid-sdk-cpp"]
+	path = third_party/hyperliquid-sdk-cpp
+	url = /home/markl/src/hyperliquid-sdk-cpp
+[submodule "third_party/quickfix"]
+	path = third_party/quickfix
+	url = https://github.com/quickfix/quickfix.git
+	ignore = dirty

@@ -1,0 +1,16 @@
+{
+  "name": "exchange-gateways",
+  "version": "0.1.0",
+  "dependencies": [
+    "openssl",
+    "boost-iostreams",
+    "boost-filesystem",
+    "boost-system",
+    "simdjson",
+    "nlohmann-json",
+    "spdlog",
+    "boost-asio",
+    "boost-beast",
+    "boost-multiprecision"
+  ]
+}

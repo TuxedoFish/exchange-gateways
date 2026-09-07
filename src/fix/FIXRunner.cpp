@@ -1,12 +1,13 @@
 #include "../../include/fix/FIXRunner.h"
+#include "../../include/util/ConsoleUtils.h"
 
-FIXRunner::FIXRunner(const SimpleConfig& config) : config_(config)
+FIXRunner::FIXRunner(SimpleConfig& config) : config_(config)
 {
 }
 
 int FIXRunner::run(FIX::Application& application, const std::string& startupMessage)
 {
-    return run(application, startupMessage, waitForUserInput, false);
+    return run(application, startupMessage, ConsoleUtils::waitForUserInput, true);
 }
 
 int FIXRunner::run(FIX::Application& application, const std::string& startupMessage, std::function<void()> mainLoop,
@@ -17,7 +18,7 @@ int FIXRunner::run(FIX::Application& application, const std::string& startupMess
         // Load configuration
         FIX::SessionSettings settings(config_.getString("fix_settings_file_path"));
 
-        std::cout << startupMessage << std::endl;
+        spdlog::info("{}", startupMessage);
 
         // Create stores and logs
         FIX::FileStoreFactory storeFactory(settings);
@@ -36,7 +37,7 @@ int FIXRunner::run(FIX::Application& application, const std::string& startupMess
     }
     catch (std::exception& e)
     {
-        std::cout << "Error: " << e.what() << std::endl;
+        spdlog::error("Error: {}", e.what());
         return 1;
     }
 
@@ -47,7 +48,7 @@ void FIXRunner::runWithInitiator(std::function<void()> mainLoop, FIX::ThreadedSS
 {
     // Start the connection
     initiator.start();
-    std::cout << "FIX client started. Type q to quit..." << std::endl;
+    spdlog::info("FIX client started. Type q to quit...");
 
     // Run the main loop
     mainLoop();
@@ -56,18 +57,3 @@ void FIXRunner::runWithInitiator(std::function<void()> mainLoop, FIX::ThreadedSS
     initiator.stop();
 }
 
-void FIXRunner::waitForUserInput()
-{
-    while (true)
-    {
-        std::string value;
-        std::cin >> value;
-
-        if (value == "q")
-        {
-            break;
-        }
-
-        std::cout << std::endl;
-    }
-}

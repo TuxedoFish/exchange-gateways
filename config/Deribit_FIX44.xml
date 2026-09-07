@@ -94,6 +94,8 @@
       <field name='LastQty' required='N' />
       <field name='DeribitLabel' required='N' />
       <field name='DeribitMMProtection' required='N' />
+      <field name='RefreshQty' required='N' />
+      <field name='CashOrderQty' required='N' />
       <group name='NoFills' required='N'>
         <field name='FillExecID' required='Y'/>
         <field name='FillPx' required='N'/>
@@ -392,6 +394,7 @@
         <field name='PriceQuoteCurrency' required='N' />
         <field name='InstrumentPricePrecision' required='N' />
         <field name='MinPriceIncrement' required='N' />
+        <field name='UnderlyingSecurityType' required='N' />
         <field name='UnderlyingSymbol' required='N' />
         <field name='IssueDate' required='N' />
         <field name='MaturityDate' required='N' />
@@ -4917,8 +4920,10 @@
     <field number='960' name='StrategyParameterValue' type='STRING' />
     <field number='965' name='SecurityStatus' type='STRING' />
     <field number='969' name='MinPriceIncrement' type='PRICE' />
+    <field number='1088' name='RefreshQty' type='QTY' />
     <field number='1079' name='MaturityTime' type='LOCALMKTDATE' />
     <field number='1140' name='MaxTradeVol' type='QTY' />
+    <field number='1138' name='DisplayQty' type='QTY' />
     <field number='1188' name='Volatility' type='FLOAT' />
     <field number='1205' name='NoTickRules' type='NUMINGROUP' />
     <field number='1206' name='StartTickPriceRange' type='PRICE' />

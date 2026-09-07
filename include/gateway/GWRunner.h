@@ -6,16 +6,16 @@
 #include "../util/SimpleConfig.h"
 #include "../sbe/SBEQueuePoller.h"
 #include "../sbe/SBEBinaryWriter.h"
-#include "OrdersHandler.h"
+#include "DeribitOrdersHandler.h"
 
 // Forward declaration
-class GWApplication;
+class DeribitGWApplication;
 class RefDataHolder;
 
 class GWRunner
 {
 public:
-    explicit GWRunner(const SimpleConfig& config, GWApplication& gwApplication, RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter);
+    explicit GWRunner(const SimpleConfig& config, SBEMessageListener& ordersHandler, RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter);
     ~GWRunner() = default;
 
     // Instance run method with access to config
@@ -23,10 +23,9 @@ public:
 
 private:
     const SimpleConfig& m_config;
-    GWApplication& m_gwApplication;
+    SBEMessageListener& m_ordersHandler;
     RefDataHolder& m_refDataHolder;
     SBEBinaryWriter& m_sbeWriter;
-    std::unique_ptr<OrdersHandler> m_ordersHandler;
     std::unique_ptr<SBEQueuePoller> m_mdPoller;
     std::unique_ptr<SBEQueuePoller> m_gwInPoller;
 

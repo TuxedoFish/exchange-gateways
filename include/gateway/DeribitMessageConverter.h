@@ -10,6 +10,8 @@
 #include "../../generated/com_liversedge_messages/NewOrder.h"
 #include "RefDataHolder.h"
 #include "../sbe/SBEUtils.h"
+#include <spdlog/spdlog.h>
+#include "../../include/fix/FIXUtils.h"
 
 class DeribitMessageConverter
 {

@@ -19,7 +19,7 @@ public:
     ~MarketDataLogger();
 
     // Main logging method
-    void writeToLog(const std::string& direction, const FIX::Message& message);
+    void writeToLog(const std::string& direction, const std::string& message);
 
     // Configuration methods
     void setLogDirectory(const std::string& directory);

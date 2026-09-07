@@ -31,4 +31,7 @@ public:
     virtual void onOrderCancelReject(com::liversedge::messages::OrderCancelReject& decoder, std::uint64_t timestamp) = 0;
     virtual void onExecutionReport(com::liversedge::messages::ExecutionReport& decoder, std::uint64_t timestamp) = 0;
 
+    // Utility functions
+    virtual void setIsReplay(bool isReplay) {}
+
 };

@@ -8,6 +8,7 @@ CMakePresets.json
 # Build
 out/
 generated/
+build/
 
 # Fix
 *.log
@@ -16,4 +17,5 @@ store/
 
 # Settings
 config/settings.*
+config/*.cfg
 !config/settings.example.txt

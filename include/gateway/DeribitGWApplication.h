@@ -30,11 +30,11 @@
 
 using encoding_t = unsigned char const*;
 
-class GWApplication : public FIX::Application, public FIX::MessageCracker
+class DeribitGWApplication : public FIX::Application, public FIX::MessageCracker
 {
 public:
-    GWApplication(SimpleConfig& config, RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter);
-    ~GWApplication() = default;
+    DeribitGWApplication(SimpleConfig& config, RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter);
+    ~DeribitGWApplication() = default;
 
     // Application interface
     void onCreate(const FIX::SessionID&) override;
@@ -52,7 +52,7 @@ public:
 private:
     FIX::SessionID m_sessionID;
     bool m_loggedOn = false;
-    SimpleConfig m_config;
+    SimpleConfig& m_config;
     RefDataHolder& m_refDataHolder;
     SBEBinaryWriter& m_sbeWriter;
 

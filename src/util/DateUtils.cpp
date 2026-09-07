@@ -9,7 +9,7 @@ std::tm DateUtils::getDateFromString(const std::string& dateString)
     ss >> std::get_time(&tm, "%Y%m%d");
 
     if (ss.fail()) {
-        std::cout << "Date parsing failed!" << std::endl;
+        spdlog::info("Date parsing failed!");
         return tm;
     }
     return tm;

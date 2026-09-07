@@ -62,7 +62,7 @@ void DeribitMessageConverter::convertExecutionReport(
     {
         FIX::TransactTime transactTime;
         message.getField(transactTime);
-        sbeExecReport.timestamp(transactTime.getValue().getTimeT() * 1000000000ULL);
+        sbeExecReport.transactTime(FixUtils::convertFIXTimeToNanos(transactTime.getValue()));
     }
     FIX::OrdStatus ordStatus{};
     message.get(ordStatus);
@@ -106,7 +106,7 @@ void DeribitMessageConverter::convertExecutionReport(
     }
     if (message.isSetField(FIX::FIELD::LastPx))
     {
-        SBEUtils::setPrice(sbeExecReport.lastPx(), message.getField(FIX::FIELD::Price));
+        SBEUtils::setPrice(sbeExecReport.lastPx(), message.getField(FIX::FIELD::LastPx));
     }
     if (message.isSetField(FIX::FIELD::LastQty))
     {
@@ -185,13 +185,15 @@ std::uint64_t DeribitMessageConverter::extractSendingTimeFromFix(const FIX::Mess
     {
         FIX::SendingTime sendingTime;
         message.getHeader().getField(sendingTime);
-        return sendingTime.getValue().getTimeT() * 1000000000ULL;
+
+        const FIX::UtcTimeStamp& ts = sendingTime.getValue();
+        std::uint64_t result = FixUtils::convertFIXTimeToNanos(ts);
+
+        return result;
     }
     catch (const std::exception& e)
     {
-        std::cout << "Warning: SendingTime not found in FIX message, using current time" << std::endl;
-        auto now = std::chrono::system_clock::now();
-        auto duration = now.time_since_epoch();
-        return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+        spdlog::warn("SendingTime not found in FIX message: {}", e.what());
+        return 0;
     }
 }

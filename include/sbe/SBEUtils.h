@@ -15,6 +15,9 @@
 #include "../util/DecimalTypes.h"
 #include "quickfix/Fields.h"
 
+#include <sstream>
+#include <string_view>
+
 #define HEADER_LENGTH 8
 
 /**
@@ -52,15 +55,37 @@ public:
     }
 
     // Setting SBE
-    static void setQty(com::liversedge::messages::Qty& field, const std::string& value);
-    static void setPrice(com::liversedge::messages::Price& field, const std::string& value);
+    static void setQty(com::liversedge::messages::Qty& field, std::string_view value);
+    static void setPrice(com::liversedge::messages::Price& field, std::string_view value);
     static void setDate(com::liversedge::messages::Date& field, const std::string& value);
+
+    /**
+     * Render any SBE message to a JSON-like string using its generated
+     * operator<<. Intended for debug logging only - allocates and streams.
+     *
+     * NOTE: call this AFTER the message has been fully encoded (i.e. after
+     * convertExecutionReport or equivalent) and BEFORE the SBEBinaryWriter
+     * releases its mutex in writeMessage(), otherwise another thread may
+     * overwrite the underlying buffer while it is being read.
+     */
+    template<typename T>
+    static std::string toString(const T& message)
+    {
+        std::ostringstream oss;
+        oss << message;
+        return oss.str();
+    }
+
     // Buffer access helpers
     static std::int64_t getInt64(const char* buffer, std::size_t offset);
+    static int64_t stringToMantissa(std::string_view str, int8_t exponent = -8);
+    static int64_t powerOfTenMantissa(int decimals, int8_t exponent);
+
     // SBE -> Internal
     static Dec convertPrice(const com::liversedge::messages::Price& price);
     static Dec convertQty(const com::liversedge::messages::Qty& qty);
     static std::string extractVarString(const com::liversedge::messages::VarStringEncoding& varString, const int encodedLength, const int variableOffset = 0);
+
     // FIX -> SBE
     static com::liversedge::messages::Currency::Value currencyFromString(const std::string& currency);
     static com::liversedge::messages::SettlType::Value settlTypeFromString(const std::string& settlType);

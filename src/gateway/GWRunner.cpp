@@ -1,15 +1,15 @@
 #include "../../include/gateway/GWRunner.h"
-#include "../../include/gateway/OrdersHandler.h"
-#include "../../include/gateway/GWApplication.h"
+#include "../../include/gateway/DeribitOrdersHandler.h"
+#include "../../include/gateway/DeribitGWApplication.h"
 #include "../../include/util/SimpleConfig.h"
 #include <boost/filesystem.hpp>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
 
-GWRunner::GWRunner(const SimpleConfig& config, GWApplication& gwApplication, RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter)
-    : m_config(config), m_gwApplication(gwApplication), m_refDataHolder(refDataHolder), m_sbeWriter(sbeWriter) {
+GWRunner::GWRunner(const SimpleConfig& config, SBEMessageListener& ordersHandler, RefDataHolder& refDataHolder, SBEBinaryWriter& sbeWriter)
+    : m_config(config), m_ordersHandler(ordersHandler), m_refDataHolder(refDataHolder), m_sbeWriter(sbeWriter) {
     setupPollers();
 }
 
@@ -19,14 +19,14 @@ void GWRunner::run() {
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
     // Replay streams
-    std::cout << "Replaying streams..." << std::endl;
-    m_ordersHandler->setIsReplay(true);
+    spdlog::info("Replaying streams...");
+    m_ordersHandler.setIsReplay(true);
     while (m_mdPoller->next()) {
     }
     while (m_gwInPoller->next()) {
     }
-    m_ordersHandler->setIsReplay(false);
-    std::cout << "Finished replay." << std::endl;
+    m_ordersHandler.setIsReplay(false);
+    spdlog::info("Finished replay.");
 
     while (true) {
         // Poll the marketdata queue
@@ -53,9 +53,8 @@ void GWRunner::run() {
 }
 
 void GWRunner::setupPollers() {
-    m_ordersHandler = std::make_unique<OrdersHandler>(m_refDataHolder, m_gwApplication, m_sbeWriter);
-    m_mdPoller = createPoller(m_config.getString("md_file_path"), *m_ordersHandler);
-    m_gwInPoller = createPoller(m_config.getString("gw_inbound_file_path"), *m_ordersHandler);
+    m_mdPoller = createPoller(m_config.getString("md_file_path"), m_ordersHandler);
+    m_gwInPoller = createPoller(m_config.getString("gw_inbound_file_path"), m_ordersHandler);
 }
 
 std::unique_ptr<SBEQueuePoller> GWRunner::createPoller(std::string dataDirectory, SBEMessageListener& listener)
@@ -63,7 +62,7 @@ std::unique_ptr<SBEQueuePoller> GWRunner::createPoller(std::string dataDirectory
     auto poller = std::make_unique<SBEQueuePoller>(dataDirectory, listener);
 
     boost::filesystem::path path = boost::filesystem::path(dataDirectory) / "messages.sbe";
-    std::cout << "Reading from: " << path << std::endl;
+    spdlog::info("Reading from: {}", path.string());
 
     poller->readFrom(path, true); // true = live mode
     return poller;

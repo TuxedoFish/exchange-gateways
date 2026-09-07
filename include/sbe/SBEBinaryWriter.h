@@ -3,7 +3,9 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <iostream>
+#include <cstring>
+#include <cerrno>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <mutex>
 #include <boost/filesystem.hpp>
@@ -13,10 +15,12 @@
 class SBEBinaryWriter {
 private:
     std::ofstream file_;
+    std::ofstream indexFile_;
     std::string filename_;
     size_t messageCount_;
     std::vector<char> buffer_;
     mutable std::mutex writeMutex_;
+    bool batchMode_{false};
 
     static constexpr size_t BUFFER_SIZE = 4092;
 
@@ -36,6 +40,10 @@ public:
     const std::string& getFilename() const;
     bool isOpen() const;
 
+    // Batch mode: when enabled, skip per-message flush for historical processing
+    void setBatchMode(bool enabled);
+    void flushNow();
+
 private:
     void flush(); // Private - called automatically by writeMessage()
 };
@@ -47,8 +55,10 @@ bool SBEBinaryWriter::prepareMessage(T& message) {
         // Acquire lock - will be held until writeMessage() completes
         writeMutex_.lock();
 
-        // Clear buffer
-        std::fill(buffer_.begin(), buffer_.end(), 0);
+        // Clear header + fixed-field block so unset enum/numeric fields default to 0
+        com::liversedge::messages::MessageHeader tmpHdr;
+        size_t clearSize = tmpHdr.encodedLength() + message.sbeBlockLength();
+        std::memset(buffer_.data(), 0, clearSize);
 
         // Create and encode message header
         com::liversedge::messages::MessageHeader hdr;
@@ -66,7 +76,7 @@ bool SBEBinaryWriter::prepareMessage(T& message) {
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Error preparing message: " << e.what() << std::endl;
+        spdlog::error("Error preparing message: {}", e.what());
         writeMutex_.unlock(); // Release lock on error
         return false;
     }
@@ -82,8 +92,8 @@ bool SBEBinaryWriter::writeMessage(T& message) {
 
         // Ensure we don't exceed buffer size
         if (totalSize > buffer_.size()) {
-            std::cerr << "Message too large for buffer. Size: " << totalSize
-                << ", Buffer: " << buffer_.size() << std::endl;
+            spdlog::error("Message too large for buffer. Size: {}, Buffer: {}, file: '{}'",
+                          totalSize, buffer_.size(), filename_);
             writeMutex_.unlock(); // Release lock on error
             return false;
         }
@@ -91,13 +101,34 @@ bool SBEBinaryWriter::writeMessage(T& message) {
         // Write to file
         file_.write(buffer_.data(), totalSize);
         if (!file_.good()) {
-            std::cerr << "Error writing to file" << std::endl;
+            int savedErrno = errno;
+            boost::system::error_code ec;
+            auto spaceInfo = boost::filesystem::space(
+                boost::filesystem::path(filename_).parent_path(), ec);
+            spdlog::error("Error writing to file '{}': {} (errno={}), "
+                          "writeSize={}, filePos={}, "
+                          "diskAvailable={}, diskCapacity={}, messageCount={}",
+                          filename_,
+                          std::strerror(savedErrno), savedErrno,
+                          totalSize,
+                          static_cast<int64_t>(file_.tellp()),
+                          ec ? -1 : static_cast<int64_t>(spaceInfo.available),
+                          ec ? -1 : static_cast<int64_t>(spaceInfo.capacity),
+                          messageCount_);
             writeMutex_.unlock(); // Release lock on error
             return false;
         }
 
-        // Flush to disk while lock is held
-        flush();
+        // Write end offset to index so consumers know all data up to
+        // this point is safely committed
+        std::uint64_t endOffset = static_cast<std::uint64_t>(file_.tellp());
+        indexFile_.write(reinterpret_cast<const char*>(&endOffset), sizeof(endOffset));
+
+        // Flush to disk unless in batch mode (historical processing)
+        if (!batchMode_) {
+            file_.flush();
+            indexFile_.flush();
+        }
 
         messageCount_++;
         writeMutex_.unlock(); // Release lock on success
@@ -105,7 +136,8 @@ bool SBEBinaryWriter::writeMessage(T& message) {
 
     }
     catch (const std::exception& e) {
-        std::cerr << "Error writing message: " << e.what() << std::endl;
+        spdlog::error("Error writing message to '{}': {}, messageCount={}",
+                      filename_, e.what(), messageCount_);
         writeMutex_.unlock(); // Release lock on exception
         return false;
     }

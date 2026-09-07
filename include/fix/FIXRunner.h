@@ -1,7 +1,7 @@
 #pragma once
 
-#include <iostream>
 #include <string>
+#include <spdlog/spdlog.h>
 #include <functional>
 #include "quickfix/Application.h"
 #include "quickfix/FileStore.h"
@@ -14,16 +14,14 @@
 class FIXRunner
 {
 public:
-    explicit FIXRunner(const SimpleConfig& config);
+    explicit FIXRunner(SimpleConfig& config);
     ~FIXRunner() = default;
 
     int run(FIX::Application& application, const std::string& startupMessage);
     int run(FIX::Application& application, const std::string& startupMessage, std::function<void()> mainLoop, bool logFixMessages);
     void runWithInitiator(std::function<void()> mainLoop, FIX::ThreadedSSLSocketInitiator& initiator);
 
-    // Default main loop implementation
-    static void waitForUserInput();
 
 private:
-    const SimpleConfig& config_;
+    SimpleConfig& config_;
 };
